@@ -1317,6 +1317,26 @@ describe "String" do
     it "subs beginless range with string" do
       "hello".sub(nil..2, "ye").should eq("yelo")
     end
+
+    it "subs the last char" do
+      str = "hello"
+      str.sub('o', 'a').should eq("hella")
+      str.sub('o', "ad").should eq("hellad")
+      str.sub(4, 'a').should eq("hella")
+      str.sub(4, "ad").should eq("hellad")
+      str.sub(4..4, 'a').should eq("hella")
+      str.sub(4..4, "ad").should eq("hellad")
+      str.sub({'a' => 'b', 'o' => 'a'}).should eq("hella")
+      str.sub({'a' => 'b', 'o' => "ad"}).should eq("hellad")
+      str.sub(/o/, 'a').should eq("hella")
+      str.sub(/o/, "ad").should eq("hellad")
+      str.sub(/o/) { 'a' }.should eq("hella")
+      str.sub(/o/) { "ad" }.should eq("hellad")
+      str.sub(/(o)/, {"o" => 'a'}).should eq("hella")
+      str.sub(/(o)/, {"o" => "ad"}).should eq("hellad")
+      str.sub(/(o)/) { 'a' }.should eq("hella")
+      str.sub(/(o)/) { "ad" }.should eq("hellad")
+    end
   end
 
   describe "gsub" do
@@ -2200,7 +2220,7 @@ describe "String" do
     "ab☃".codepoints.should eq [97, 98, 9731]
   end
 
-  it "gets size of \0 string" do
+  it "gets size of \\0 string" do
     "\0\0".size.should eq(2)
   end
 

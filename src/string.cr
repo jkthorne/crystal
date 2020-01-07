@@ -844,16 +844,6 @@ class String
     self[regex, group]?.not_nil!
   end
 
-  @[Deprecated("Use `String#char_at` instead.")]
-  def at(index : Int)
-    char_at(index)
-  end
-
-  @[Deprecated("Use `String#char_at` instead.")]
-  def at(index : Int)
-    char_at(index) { yield }
-  end
-
   def char_at(index : Int)
     char_at(index) { raise IndexError.new }
   end
@@ -1853,9 +1843,8 @@ class String
         end
       end
 
-      buffer << reader.current_char
-
       if reader.has_next?
+        buffer << reader.current_char
         reader.next_char
         buffer.write unsafe_byte_slice(reader.pos)
       end
