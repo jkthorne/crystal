@@ -35,6 +35,10 @@ module Spec
     end
 
     def self.file(output_path : Path)
+      if output_path.extension != ".xml"
+        output_path = output_path.join("output.xml")
+      end
+
       Dir.mkdir_p(output_path.dirname)
       file = File.new(output_path, "w")
       JUnitFormatter.new(file)
@@ -88,6 +92,7 @@ module Spec
       when :error   then "error"
       when :fail    then "failure"
       when :pending then "skipped"
+      else               nil
       end
     end
 
@@ -114,12 +119,8 @@ module Spec
     end
 
     private def classname(result)
-      path = Path[result.file].expand
-      path.to_s
-        .lchop(Dir.current)
-        .rchop(path.extension)
-        .gsub(File::SEPARATOR, '.')
-        .strip('.')
+      path = Path.new result.file
+      path.expand.relative_to(Dir.current).parts.join('.').rchop path.extension
     end
   end
 end
