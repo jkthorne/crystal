@@ -150,7 +150,7 @@ struct Slice(T)
   # slice = Slice(UInt8).empty
   # slice.size # => 0
   # ```
-  def self.empty
+  def self.empty : self
     new(Pointer(T).null, 0)
   end
 
@@ -163,7 +163,7 @@ struct Slice(T)
   # slice2 = slice + 2
   # slice2 # => Slice[12, 13, 14]
   # ```
-  def +(offset : Int)
+  def +(offset : Int) : Slice(T)
     check_size(offset)
 
     Slice.new(@pointer + offset, @size - offset, read_only: @read_only)
@@ -206,7 +206,7 @@ struct Slice(T)
   # slice[1, 3]?  # => Slice[11, 12, 13]
   # slice[1, 33]? # => nil
   # ```
-  def []?(start : Int, count : Int)
+  def []?(start : Int, count : Int) : Slice(T)?
     return unless 0 <= start <= @size
     return unless 0 <= count <= @size - start
 
@@ -225,7 +225,7 @@ struct Slice(T)
   # slice[1, 3]  # => Slice[11, 12, 13]
   # slice[1, 33] # raises IndexError
   # ```
-  def [](start : Int, count : Int)
+  def [](start : Int, count : Int) : Slice(T)
     self[start, count]? || raise IndexError.new
   end
 
@@ -251,6 +251,19 @@ struct Slice(T)
 
   # Returns a new slice with the elements in the given range.
   #
+  # The first element in the returned slice is `self[range.begin]` followed
+  # by the next elements up to index `range.end` (or `self[range.end - 1]` if
+  # the range is exclusive).
+  # If there are fewer elements in `self`, the returned slice is shorter than
+  # `range.size`.
+  #
+  # ```
+  # a = Slice["a", "b", "c", "d", "e"]
+  # a[1..3] # => Slice["b", "c", "d"]
+  # # range.end > array.size
+  # a[3..7] # => Slice["d", "e"]
+  # ```
+  #
   # Negative indices count backward from the end of the slice (`-1` is the last
   # element). Additionally, an empty slice is returned when the starting index
   # for an element range is at the end of the slice.
@@ -264,18 +277,18 @@ struct Slice(T)
   # slice[1..3]  # => Slice[11, 12, 13]
   # slice[1..33] # raises IndexError
   # ```
-  def [](range : Range)
+  def [](range : Range) : Slice(T)
     start, count = Indexable.range_to_index_and_count(range, size) || raise IndexError.new
     self[start, count]
   end
 
   @[AlwaysInline]
-  def unsafe_fetch(index : Int)
+  def unsafe_fetch(index : Int) : T
     @pointer[index]
   end
 
   # Reverses in-place all the elements of `self`.
-  def reverse!
+  def reverse! : self
     check_writable
 
     return self if size <= 1
@@ -435,7 +448,7 @@ struct Slice(T)
   # slice = UInt8.slice(97, 62, 63, 8, 255)
   # slice.hexstring # => "613e3f08ff"
   # ```
-  def hexstring
+  def hexstring : String
     self.as(Slice(UInt8))
 
     str_size = size * 2
@@ -446,7 +459,7 @@ struct Slice(T)
   end
 
   # :nodoc:
-  def hexstring(buffer)
+  def hexstring(buffer) : Nil
     self.as(Slice(UInt8))
 
     offset = 0
@@ -467,7 +480,7 @@ struct Slice(T)
   # slice = UInt8.slice(97, 62, 63, 8, 255)
   # slice.hexdump # => "00000000  61 3e 3f 08 ff                                    a>?..\n"
   # ```
-  def hexdump
+  def hexdump : String
     self.as(Slice(UInt8))
 
     return "" if empty?
@@ -579,7 +592,7 @@ struct Slice(T)
     ((c < 10 ? 48_u8 : 87_u8) + c)
   end
 
-  def bytesize
+  def bytesize : Int32
     sizeof(T) * size
   end
 
@@ -634,7 +647,7 @@ struct Slice(T)
     {% end %}
   end
 
-  def to_slice
+  def to_slice : self
     self
   end
 
@@ -785,7 +798,7 @@ struct Slice(T)
   end
 
   # :nodoc:
-  def fast_index(object, offset)
+  def fast_index(object, offset) : Int32?
     offset += size if offset < 0
     if 0 <= offset < size
       result = LibC.memchr(to_unsafe + offset, object, size - offset)
