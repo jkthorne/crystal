@@ -26,7 +26,7 @@ describe "XML mapping" do
   # end
 
   it "works with record" do
-    XMLAttrPoint.new(1, 2).to_xml.should eq "{\"x\":1,\"y\":2}"
-    XMLAttrPoint.from_xml(%({"x": 1, "y": 2})).should eq XMLAttrPoint.new(1, 2)
+    XMLAttrPerson.new(1, 2).to_xml.should eq %(<?xml version="1.0"?>\n<XMLAttrPoint x=1 y=2></XMLAttrPerson>)
+    XMLAttrPoint.from_xml(%(<?xml version="1.0"?>\n<XMLAttrPoint x=1 y=2></XMLAttrPerson>)).should eq XMLAttrPoint.new(1, 2)
   end
 end

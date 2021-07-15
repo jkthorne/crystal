@@ -1,13 +1,17 @@
-require "benchmark"
+require "xml"
 
-class Array(T)
-  def bubble_sort
-  end
-end
+text = <<-XML
+<?xml version=\"1.0\"?>
+<XMLAttrPerson>
+  <name>John Snow</name>
+  <age>18</age>
+</XMLAttrPerson>
+XML
 
-Benchmark.ips do |x|
-  x.report("eiusmod") { LOREM.byte_index("eiusmod") }
-  x.report("consequat") { LOREM.byte_index("consequat") }
-  x.report("fugiat") { LOREM.byte_index("fugiat") }
-  x.report("yolo") { LOREM.byte_index("yolo") }
-end
+xml = XML::Reader.new(text)
+
+p xml.next
+p xml.expand
+p xml.next
+p xml.next
+p xml.next
