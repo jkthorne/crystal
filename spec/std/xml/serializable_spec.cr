@@ -1,11 +1,12 @@
 require "../spec_helper"
 require "xml"
-require "json"
-require "yaml"
-{% unless flag?(:win32) %}
-  require "big"
-{% end %}
-require "uuid"
+require "xml/serializable"
+# require "json"
+# require "yaml"
+# {% unless flag?(:win32) %}
+#   require "big"
+# {% end %}
+# require "uuid"
 
 # struct XMLAttrPerson
 #   include XML::Serializable
@@ -26,7 +27,8 @@ describe "XML mapping" do
   # end
 
   it "works with record" do
-    XMLAttrPoint.new(1, 2).to_xml.should eq "{\"x\":1,\"y\":2}"
-    XMLAttrPoint.from_xml(%({"x": 1, "y": 2})).should eq XMLAttrPoint.new(1, 2)
+    xml = "<?xml version=\"1.0\"?>\n<XMLAttrPoint x=1 y=2</XMLAttrPoint>\n"
+    XMLAttrPoint.new(1, 2).to_xml.should eq xml
+    # XMLAttrPoint.from_xml(xml).should eq XMLAttrPoint.new(1, 2)
   end
 end
