@@ -78,3 +78,10 @@ end
 def String.new(node : XML::Node)
   node.content
 end
+
+def Object.from_json(string_or_io, root : String)
+  parser = XML::Reader.new(string_or_io)
+  parser.on_key!(root) do
+    new parser
+  end
+end

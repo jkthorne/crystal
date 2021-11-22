@@ -49,52 +49,42 @@ module XML
               }
             %}
           {% end %}
-        {% end %}
 
-        {% for name, value in properties %}
-          %var{name} = nil
-          %found{name} = false
-        {% end %}
+          {% for name, value in properties %}
+            %var{name} = nil
+            %found{name} = false
+          {% end %}
 
-        # Check if this is the root document and select child
-        if node.type.document_node?
-          new_node = node.first_element_child
-          raise "failed to find element to serialize" if new_node.nil?
-          node = new_node
-        end
-
-        node.children.each do |child|
-          name = child.name
-          case name
-            {% for name, value in properties %}
-              when {{value[:key]}}
-                %found{name} = true
-                %var{name} = ::Union({{value[:type]}}).new(child, {{value[:type]}})
-            {% end %}
-          else
-            on_unknown_xml_attribute(child, name)
+          begin
+            parser.next
+          rescue # TODO: handle errors
           end
-        end
-
-        {% for name, value in properties %}
-          @{{name}} = (%var{name}.as({{value[:type]}}))
+          until parser.next
+            case parser.name
+              {% for name, value in properties %}
+                when {{value[:key]}}
+                  %found{name} = true
+                end
+              {% end %}
+            else
+              on_unknown_xml_attribute(parser)
+            end
+          end
         {% end %}
-      {% end %}
-      after_initialize
+
+        after_initialize
+      end
+
+      protected def after_initialize
+      end
+  
+      protected def on_unknown_xml_attribute(parser, key)
+        parser.skip
+      end
     end
 
-    protected def after_initialize
-    end
-
-    protected def on_unknown_xml_attribute(node, name)
-    end
-
-    protected def on_to_xml(node : ::XML::Builder)
-    end
-
-    # TODO: add build for document
-    def to_xml(document : Bool = false)
-      XML.build_fragment do |xml|
+    def to_xml
+      XML.build do |xml|
         {% begin %}
           {% properties = {} of Nil => Nil %}
           {% for ivar in @type.instance_vars %}
@@ -134,6 +124,23 @@ module XML
           XML::Any.new(node.content)
         end
       end
+    end
+  end
+
+  class SerializableError < Error
+    getter klass : String
+    getter attribute : String?
+
+    def initialize(message : String?, @klass : String, @attribute : String?, line_number : Int32, column_number : Int32)
+      message = String.build do |io|
+        io << message
+        io << "\n  parsing "
+        io << klass
+        if attribute = @attribute
+          io << '#' << attribute
+        end
+      end
+      super(message, line_number, column_number)
     end
   end
 end
