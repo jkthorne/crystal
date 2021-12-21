@@ -56,31 +56,31 @@ module XML
           {% end %}
 
           begin
-            parser.next
-          rescue # TODO: handle errors
+            node.next
+          rescue exc : ::XML::Error
+            raise ::XML::SerializableError.new(exc.message, self.class.to_s, nil, exc.line_number)
           end
-          until parser.next
-            case parser.name
-              {% for name, value in properties %}
+
+          until node.next
+            case node.name
+                {% for name, value in properties %}
                 when {{value[:key]}}
                   %found{name} = true
-                end
-              {% end %}
+                {% end %}
             else
-              on_unknown_xml_attribute(parser)
+              on_unknown_xml_attribute(node, node.name)
             end
           end
         {% end %}
+      {% end %}
 
-        after_initialize
-      end
+      after_initialize
+    end
 
-      protected def after_initialize
-      end
-  
-      protected def on_unknown_xml_attribute(parser, key)
-        parser.skip
-      end
+    protected def after_initialize
+    end
+
+    protected def on_unknown_xml_attribute(node, key)
     end
 
     def to_xml
@@ -127,11 +127,11 @@ module XML
     end
   end
 
-  class SerializableError < Error
+  class SerializableError < XML::Error
     getter klass : String
     getter attribute : String?
 
-    def initialize(message : String?, @klass : String, @attribute : String?, line_number : Int32, column_number : Int32)
+    def initialize(message : String?, @klass : String, @attribute : String?, line_number : Int32)
       message = String.build do |io|
         io << message
         io << "\n  parsing "
@@ -140,7 +140,7 @@ module XML
           io << '#' << attribute
         end
       end
-      super(message, line_number, column_number)
+      super(message, line_number)
     end
   end
 end
