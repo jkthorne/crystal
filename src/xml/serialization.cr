@@ -44,8 +44,15 @@ module XML
           {% unless ann && (ann[:ignore] || ann[:ignore_deserialize]) %}
             {%
               properties[ivar.id] = {
-                type: ivar.type,
-                key:  ((ann && ann[:key]) || ivar).id.stringify,
+                type:        ivar.type,
+                key:         ((ann && ann[:key]) || ivar).id.stringify,
+                has_default: ivar.has_default_value?,
+                default:     ivar.default_value,
+                nilable:     ivar.type.nilable?,
+                root:        ann && ann[:root],
+                converter:   ann && ann[:converter],
+                presence:    ann && ann[:presence],
+
               }
             %}
           {% end %}
@@ -56,21 +63,67 @@ module XML
           {% end %}
 
           begin
-            node.next
+            if node.document?
+              root = node.root
+              if root.nil?
+                raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, Int32::MIN)
+              else
+                childern = root.children
+              end
+            else
+              childern = node.children
+            end
           rescue exc : ::XML::Error
             raise ::XML::SerializableError.new(exc.message, self.class.to_s, nil, exc.line_number)
           end
 
-          until node.next
-            case node.name
+          childern.each do |child|
+            case child.name
                 {% for name, value in properties %}
                 when {{value[:key]}}
                   %found{name} = true
+                  begin
+                    {% if value[:nilable] || value[:has_default] %}
+                      {% if value[:converter] %}
+                        %var{name} = {{value[:converter]}}.from_json(child)
+                      {% else %}
+                        %var{name} = ::Union({{value[:type]}}).new(child)
+                      {% end %}
+                  {% end %}
+                  rescue exc : ::XML::Error
+                    raise ::XML::SerializableError.new(exc.message, self.class.to_s, {{value[:key]}}, exc.line_number)
+                  end
                 {% end %}
             else
-              on_unknown_xml_attribute(node, node.name)
+              on_unknown_xml_attribute(child, child.name)
             end
           end
+
+          {% for name, value in properties %}
+            {% unless value[:nilable] || value[:has_default] %}
+              if %var{name}.nil? && !%found{name} && !::Union({{value[:type]}}).nilable?
+                raise ::XML::SerializableError.new("Missing XML node: {{value[:key].id}}", self.class.to_s, nil, Int32::MIN)
+              end
+            {% end %}
+
+            {% if value[:nilable] %}
+              {% if value[:has_default].nil? %}
+                @{{name}} = %var{name}
+              {% else %}
+                @{{name}} = %found{name} ? %var{name} : {{value[:default]}}
+              {% end %}
+            {% elsif value[:has_default] %}
+              if %found{name} && !%var{name}.nil?
+                @{{name}} = %var{name}
+              end
+            {% else %}
+              @{{name}} = %var{name}
+            {% end %}
+
+            {% if value[:presence] %}
+              @{{name}}_present = %found{name}
+            {% end %}
+          {% end %}
         {% end %}
       {% end %}
 
@@ -84,7 +137,7 @@ module XML
     end
 
     def to_xml
-      XML.build do |xml|
+      XML.build(version: "1.0") do |xml|
         {% begin %}
           {% properties = {} of Nil => Nil %}
           {% for ivar in @type.instance_vars %}
