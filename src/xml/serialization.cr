@@ -79,21 +79,24 @@ module XML
 
           childern.each do |child|
             case child.name
-                {% for name, value in properties %}
-                when {{value[:key]}}
-                  %found{name} = true
-                  begin
-                    {% if value[:nilable] || value[:has_default] %}
-                      {% if value[:converter] %}
-                        %var{name} = {{value[:converter]}}.from_json(child)
-                      {% else %}
-                        %var{name} = ::Union({{value[:type]}}).new(child)
-                      {% end %}
-                  {% end %}
-                  rescue exc : ::XML::Error
-                    raise ::XML::SerializableError.new(exc.message, self.class.to_s, {{value[:key]}}, exc.line_number)
-                  end
+            {% for name, value in properties %}
+              when {{value[:key]}}
+                %found{name} = true
+
+                begin
+                {% if value[:nilable] || value[:has_default] %}
                 {% end %}
+
+                {% if value[:converter] %}
+                  %var{name} = {{value[:converter]}}.from_json(child)
+                {% else %}
+                  %var{name} = ::Union({{value[:type]}}).new(child)
+                {% end %}
+
+                rescue exc : ::XML::Error
+                  raise ::XML::SerializableError.new(exc.message, self.class.to_s, {{value[:key]}}, exc.line_number)
+                end
+            {% end %}
             else
               on_unknown_xml_attribute(child, child.name)
             end
@@ -117,7 +120,7 @@ module XML
                 @{{name}} = %var{name}
               end
             {% else %}
-              @{{name}} = %var{name}
+              @{{name}} = %var{name}.as({{value[:type]}})
             {% end %}
 
             {% if value[:presence] %}

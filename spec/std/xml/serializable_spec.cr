@@ -33,10 +33,9 @@ end
 describe "XML mapping" do
   it "works with record" do
     xml = <<-XML
-            <?xml version="1.0"?>
-            <XMLAttrPoint><x>1</x><y>2</y></XMLAttrPoint>
-
-            XML
+      <?xml version="1.0"?>
+      <XMLAttrPoint><x>1</x><y>2</y></XMLAttrPoint>\n
+      XML
 
     XMLAttrPoint.new(1, 2).to_xml.should eq(xml)
     XMLAttrPoint.from_xml(xml).should eq(XMLAttrPoint.new(1, 2))
@@ -44,10 +43,10 @@ describe "XML mapping" do
 
   it "empty class" do
     xml = <<-XML
-            <?xml version="1.0"?>
-            <XMLAttrEmptyClass/>
+      <?xml version="1.0"?>
+      <XMLAttrEmptyClass/>
 
-            XML
+      XML
 
     e = XMLAttrEmptyClass.new
     e.to_xml.should eq(xml)
@@ -56,13 +55,13 @@ describe "XML mapping" do
 
   it "empty class with unmapped" do
     xml = <<-XML
-            <?xml version="1.0"?>
-            <XMLAttrEmptyClassWithUnmapped>
-              <name>John</name>
-              <age>30</age>
-            </XMLAttrEmptyClassWithUnmapped>
+      <?xml version="1.0"?>
+      <XMLAttrEmptyClassWithUnmapped>
+        <name>John</name>
+        <age>30</age>
+      </XMLAttrEmptyClassWithUnmapped>
 
-            XML
+      XML
 
     XMLAttrEmptyClassWithUnmapped.from_xml(xml).xml_unmapped.should eq(
       {
@@ -75,13 +74,13 @@ describe "XML mapping" do
 
   it "parses person" do
     xml = <<-XML
-              <?xml version="1.0"?>
-              <XMLAttrPerson>
-                <name>John</name>
-                <age>30</age>
-              </XMLAttrPerson>
+        <?xml version="1.0"?>
+        <XMLAttrPerson>
+          <name>John</name>
+          <age>30</age>
+        </XMLAttrPerson>
 
-            XML
+      XML
 
     person = XMLAttrPerson.from_xml(xml)
     person.should be_a(XMLAttrPerson)

@@ -103,7 +103,7 @@ def Nil.new(node : XML::Node)
 end
 
 def Int32.new(node : XML::Node)
-  1
+  node.content.to_i
 end
 
 def String.new(node : XML::Node)
