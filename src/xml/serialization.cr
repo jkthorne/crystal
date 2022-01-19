@@ -68,16 +68,18 @@ module XML
               if root.nil?
                 raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, Int32::MIN)
               else
-                childern = root.children
+                children = root.children
               end
             else
-              childern = node.children
+              children = node.children
             end
           rescue exc : ::XML::Error
             raise ::XML::SerializableError.new(exc.message, self.class.to_s, nil, exc.line_number)
           end
 
-          childern.each do |child|
+          children.each do |child|
+            next unless child.element?
+
             case child.name
             {% for name, value in properties %}
               when {{value[:key]}}
@@ -136,6 +138,7 @@ module XML
     protected def after_initialize
     end
 
+    # TODO implement location
     protected def on_unknown_xml_attribute(node, key)
     end
 
@@ -167,6 +170,12 @@ module XML
             {% end %}
           end
         {% end %}
+      end
+    end
+
+    module Strict
+      protected def on_unknown_xml_attribute(node, key)
+        raise ::XML::SerializableError.new("Unknown XML attribute: #{key}", self.class.to_s, nil, Int32::MIN)
       end
     end
 

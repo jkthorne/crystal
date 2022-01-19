@@ -2,6 +2,14 @@ def Object.from_xml(string_or_io)
   new XML.parse(string_or_io)
 end
 
+def Array.from_xml(string_or_io) : Nil
+  parser = XML.parse(string_or_io)
+  new(parser) do |node|
+    yield node
+  end
+  nil
+end
+
 def Union.new(node : XML::Node)
   {% begin %}
     case content = node.content
@@ -104,6 +112,36 @@ end
 
 def Int32.new(node : XML::Node)
   node.content.to_i
+end
+
+def Array.new(node : XML::Node)
+  ary = new
+  new(node) do |element|
+    ary << element
+  end
+  ary
+end
+
+def Array.new(node : XML::Node)
+  begin
+    if node.document?
+      root = node.root
+      if root.nil?
+        raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, Int32::MIN)
+      else
+        children = root.children
+      end
+    else
+      children = node.children
+    end
+  rescue exc : ::XML::Error
+    raise ::XML::SerializableError.new(exc.message, self.class.to_s, nil, exc.line_number)
+  end
+
+  children.each do |child|
+    next unless child.element?
+    yield T.new(child)
+  end
 end
 
 def String.new(node : XML::Node)
