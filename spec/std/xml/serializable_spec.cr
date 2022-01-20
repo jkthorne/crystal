@@ -48,6 +48,14 @@ class StrictXMLAttrPerson
   property age : Int32?
 end
 
+class XMLAttrPersonExtraFields
+  include XML::Serializable
+  include XML::Serializable::Unmapped
+
+  property name : String
+  property age : Int32?
+end
+
 describe "XML mapping" do
   it "works with record" do
     xml = <<-XML
@@ -197,5 +205,24 @@ describe "XML mapping" do
       StrictXMLAttrPerson.from_xml(xml)
     end
     # ex.location.should eq({4, 3}) TODO: implement location
+  end
+
+  it "should parse extra fields (XMLAttrPersonExtraFields with on_unknown_json_attribute)" do
+    xml = <<-XML
+      <?xml version="1.0"?>
+      <XMLAttrPersonExtraFields>
+        <name>John</name>
+        <age>30</age>
+        <x>1</x>
+        <y>2</y>
+      </XMLAttrPersonExtraFields>\n
+      XML
+    # TODO: <z>1,2,3</z>
+
+    person = XMLAttrPersonExtraFields.from_xml xml
+    person.name.should eq("John")
+    person.age.should eq(30)
+    # TODO: "z" => [1, 2, 3]
+    person.xml_unmapped.should eq({"x" => "1", "y" => 2_i64})
   end
 end

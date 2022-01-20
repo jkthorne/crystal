@@ -62,6 +62,7 @@ module XML
             %found{name} = false
           {% end %}
 
+          # TODO: add location
           begin
             if node.document?
               root = node.root
