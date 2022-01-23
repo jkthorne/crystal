@@ -96,11 +96,38 @@ end
 #   property value : BigDecimal
 # end
 
+class XMLAttrWithSimpleMapping
+  include XML::Serializable
+
+  property name : String
+  property age : Int32
+end
+
 class XMLAttrWithTime
   include XML::Serializable
 
   @[XML::Element(converter: Time::Format.new("%F %T"))]
   property value : Time
+end
+
+class XMLAttrWithNilableTime
+  include XML::Serializable
+
+  @[XML::Element(converter: Time::Format.new("%F"))]
+  property value : Time?
+
+  def initialize
+  end
+end
+
+class XMLAttrWithNilableTimeEmittingNull
+  include XML::Serializable
+
+  @[XML::Element(converter: Time::Format.new("%F"), emit_null: true)]
+  property value : Time?
+
+  def initialize
+  end
 end
 
 describe "XML mapping" do
@@ -430,16 +457,61 @@ describe "XML mapping" do
       </XMLAttrWithTime>\n
       XML
 
-    expected_xml = <<-XML
-      <?xml version="1.0"?>
-      <XMLAttrWithTime>
-        <value>2014-10-31 23:37:16</value>
-      </XMLAttrWithTime>\n
-      XML
+    expected_xml = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrWithTime>"
+      str << "<value>2014-10-31 23:37:16 UTC</value>" # NOTE: should this include `UTC`
+      str << "</XMLAttrWithTime>\n"
+    end
 
     xml = XMLAttrWithTime.from_xml(original_xml)
     xml.value.should be_a(Time)
     xml.value.to_s.should eq("2014-10-31 23:37:16 UTC")
     xml.to_xml.should eq(expected_xml)
+  end
+
+  it "allows setting a nilable property to nil" do
+    person = XMLAttrPerson.new("John")
+    person.age = 1
+    person.age = nil
+  end
+
+  it "parses simple mapping" do
+    xml = <<-XML
+      <?xml version="1.0"?>
+      <XMLAttrPerson>
+        <name>John</name>
+        <age>30</age>
+      </XMLAttrPerson>\n
+      XML
+
+    person = XMLAttrWithSimpleMapping.from_xml(xml)
+    person.should be_a(XMLAttrWithSimpleMapping)
+    person.name.should eq("John")
+    person.age.should eq(30)
+  end
+
+  it "outputs with converter when nilable" do
+    xml = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrWithNilableTime>"
+      str << "<value/>"
+      str << "</XMLAttrWithNilableTime>\n"
+    end
+
+    obj = XMLAttrWithNilableTime.new
+    obj.to_xml.should eq(xml)
+  end
+
+  it "outputs with converter when nilable when emit_null is true" do
+    xml = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrWithNilableTimeEmittingNull>"
+      str << "<value/>"
+      str << "</XMLAttrWithNilableTimeEmittingNull>\n"
+    end
+
+    obj = XMLAttrWithNilableTimeEmittingNull.new
+    obj.to_xml.should eq(xml)
   end
 end

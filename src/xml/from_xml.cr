@@ -1,3 +1,5 @@
+require "uuid"
+
 def Object.from_xml(string_or_io)
   new XML.parse(string_or_io)
 end
@@ -8,6 +10,27 @@ def Array.from_xml(string_or_io) : Nil
     yield node
   end
   nil
+end
+
+def Nil.new(node : XML::Node)
+  node.read
+  nil
+end
+
+def Bool.new(node : XML::Node)
+  case node.content
+  when "t", "true"
+    true
+  when "f", "false"
+    false
+  else
+    raise XML::SerializableError.new(
+      "failed to parse bool",
+      Bool.name,
+      nil,
+      Int32::MIN
+    )
+  end
 end
 
 def Union.new(node : XML::Node)
@@ -76,6 +99,17 @@ def Union.new(node : XML::Node)
       raise XML::Error.new("Couldn't parse #{self} from #{string}", Int32::MIN)
     {% end %}
   {% end %}
+end
+
+def Time.new(node : XML::Node)
+  Time::Format::ISO_8601_DATE_TIME.parse(node.content)
+end
+
+struct Time::Format
+  def from_json(node : XML::Node) : Time
+    string = node.content
+    parse(string, Time::Location::UTC)
+  end
 end
 
 def Nil.new(node : XML::Node)
@@ -153,4 +187,8 @@ def Object.from_json(string_or_io, root : String)
   parser.on_key!(root) do
     new parser
   end
+end
+
+def UUID.new(node : XML::Node)
+  UUID.new(node.content)
 end
