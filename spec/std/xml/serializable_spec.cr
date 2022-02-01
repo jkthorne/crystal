@@ -130,6 +130,52 @@ class XMLAttrWithNilableTimeEmittingNull
   end
 end
 
+class XMLAttrWithPropertiesKey
+  include XML::Serializable
+
+  property properties : Hash(String, String)
+end
+
+class XMLAttrWithKeywordsMapping
+  include XML::Serializable
+
+  property end : Int32
+  property abstract : Int32
+end
+
+class XMLAttrWithProblematicKeys
+  include XML::Serializable
+
+  property key : Int32
+  property pull : Int32
+end
+
+class XMLAttrWithSet
+  include XML::Serializable
+
+  property set : Set(String)
+end
+
+class XMLAttrWithSmallIntegers
+  include XML::Serializable
+
+  property foo : Int16
+  property bar : Int8
+end
+
+class XMLAttrWithDefaults
+  include XML::Serializable
+
+  property a = 11
+  property b = "Haha"
+  property c = true
+  property d = false
+  property e : Bool? = false
+  property f : Int32? = 1
+  property g : Int32?
+  property h = [1, 2, 3]
+end
+
 describe "XML mapping" do
   it "works with record" do
     xml = <<-XML
@@ -513,5 +559,182 @@ describe "XML mapping" do
 
     obj = XMLAttrWithNilableTimeEmittingNull.new
     obj.to_xml.should eq(xml)
+  end
+
+  # TODO: implement Hash.to_xml
+  # it "outputs JSON with properties key" do
+  #   xml = String.build do |str|
+  #     str << "<?xml version=\"1.0\"?>\n"
+  #     str << "<XMLAttrWithKeywordsMapping>"
+  #     str << "<properties>"
+  #     str << "<foo>bar</foo>"
+  #     str << "</properties>"
+  #     str << "</XMLAttrWithKeywordsMapping>\n"
+  #   end
+
+  #   obj = XMLAttrWithPropertiesKey.from_xml(xml)
+  #   obj.to_xml.should eq(xml)
+  # end
+
+  it "parses xml with keywords" do
+    xml = <<-XML
+      <?xml version="1.0"?>
+      <XMLAttrWithKeywordsMapping>
+        <end>1</end>
+        <abstract>2</abstract>
+      </XMLAttrWithKeywordsMapping>\n
+      XML
+
+    obj = XMLAttrWithKeywordsMapping.from_xml(xml)
+    obj.end.should eq(1)
+    obj.abstract.should eq(2)
+  end
+
+  # it "parses json with any" do
+  #   xml = String.build do |str|
+  #     str << "<?xml version=\"1.0\"?>"
+  #     str << "<XMLAttrWithAny>"
+  #     str << "<name>John</name>"
+  #     str << "<any>"
+  #     str << "<value><x>1</x></value>"
+  #     str << "<value>2</value>"
+  #     str << "<value>hey</value>"
+  #     str << "<value>true</value>"
+  #     str << "<value>false</value>"
+  #     str << "<value>1.5</value>"
+  #     str << "<value>null<value>"
+  #     str << "</any>"
+  #     str << "</XMLAttrWithAny>\n"
+  #   end
+  #   obj = XMLAttrWithAny.from_xml(xml)
+  #   obj.name.should eq("John")
+  #   obj.any.raw.should eq([{"x" => 1}, 2, "hey", true, false, 1.5, nil])
+  #   obj.to_xml.should eq(%({"name":"Hi","any":[{"x":1},2,"hey",true,false,1.5,null]}))
+  # end
+
+  it "parses xml with problematic keys" do
+    xml = <<-XML
+      <?xml version="1.0"?>
+      <XMLAttrWithProblematicKeys>
+        <key>1</key>
+        <pull>2</pull>
+      </XMLAttrWithProblematicKeys>
+      XML
+
+    obj = XMLAttrWithProblematicKeys.from_xml(xml)
+    obj.key.should eq(1)
+    obj.pull.should eq(2)
+  end
+
+  pending "parses xml array as set" do
+    xml = <<-XML
+      <?xml version="1.0"?>
+      <XMLAttrWithSet>
+        <set>
+          <value>a</value>
+          <value>a</value>
+          <value>b</value>
+        </set>
+      </XMLAttrWithSet>
+      XML
+
+    obj = XMLAttrWithSet.from_xml(xml)
+    obj.set.should eq(Set(String){"a", "b"})
+  end
+
+  pending "allows small types of integer" do
+    xml = <<-XML
+      <?xml version="1.0"?>
+      <XMLAttrWithSmallIntegers>
+        <foo>1</foo>
+        <bar>2</bar>
+      </XMLAttrWithSmallIntegers>
+      XML
+
+    obj = XMLAttrWithSmallIntegers.from_xml(xml)
+
+    typeof(obj.foo).should eq(Int16)
+    obj.foo.should eq(23)
+
+    typeof(obj.bar).should eq(Int8)
+    obj.bar.should eq(7)
+  end
+
+  describe "parses json with defaults" do
+    it "mixed" do
+      xml_1 = <<-XML
+        <?xml version="1.0"?>
+        <XMLAttrWithSmallIntegers>
+          <a>1</a>
+          <b>2</b>
+        </XMLAttrWithSmallIntegers>
+        XML
+
+      obj = XMLAttrWithDefaults.from_xml(xml_1)
+      obj.a.should eq 1
+      obj.b.should eq "bla"
+
+      # xml = XMLAttrWithDefaults.from_xml(%({"a":1}))
+      # xml.a.should eq 1
+      # xml.b.should eq "Haha"
+
+      # xml = XMLAttrWithDefaults.from_xml(%({"b":"bla"}))
+      # xml.a.should eq 11
+      # xml.b.should eq "bla"
+
+      # xml = XMLAttrWithDefaults.from_xml(%({}))
+      # xml.a.should eq 11
+      # xml.b.should eq "Haha"
+
+      # xml = XMLAttrWithDefaults.from_xml(%({"a":null,"b":null}))
+      # xml.a.should eq 11
+      # xml.b.should eq "Haha"
+    end
+
+    #   it "bool" do
+    #     json = JSONAttrWithDefaults.from_json(%({}))
+    #     json.c.should eq true
+    #     typeof(json.c).should eq Bool
+    #     json.d.should eq false
+    #     typeof(json.d).should eq Bool
+
+    #     json = JSONAttrWithDefaults.from_json(%({"c":false}))
+    #     json.c.should eq false
+    #     json = JSONAttrWithDefaults.from_json(%({"c":true}))
+    #     json.c.should eq true
+
+    #     json = JSONAttrWithDefaults.from_json(%({"d":false}))
+    #     json.d.should eq false
+    #     json = JSONAttrWithDefaults.from_json(%({"d":true}))
+    #     json.d.should eq true
+    #   end
+
+    #   it "with nilable" do
+    #     json = JSONAttrWithDefaults.from_json(%({}))
+
+    #     json.e.should eq false
+    #     typeof(json.e).should eq(Bool | Nil)
+
+    #     json.f.should eq 1
+    #     typeof(json.f).should eq(Int32 | Nil)
+
+    #     json.g.should eq nil
+    #     typeof(json.g).should eq(Int32 | Nil)
+
+    #     json = JSONAttrWithDefaults.from_json(%({"e":false}))
+    #     json.e.should eq false
+    #     json = JSONAttrWithDefaults.from_json(%({"e":true}))
+    #     json.e.should eq true
+    #   end
+
+    #   it "create new array every time" do
+    #     json = JSONAttrWithDefaults.from_json(%({}))
+    #     json.h.should eq [1, 2, 3]
+    #     json.h << 4
+    #     json.h.should eq [1, 2, 3, 4]
+
+    #     json = JSONAttrWithDefaults.from_json(%({}))
+    #     json.h.should eq [1, 2, 3]
+    #   end
   end
 end

@@ -41,14 +41,10 @@ def Union.new(node : XML::Node)
       return nil
     {% end %}
     {% if T.includes? Bool %}
-    when .includes?(%w(true false))
-      if content == "true"
-        return true
-      elsif content = "false"
-        return false
-      else
-        raise XML::SerializableError.new("failed to parse bool", Bool, nil, Int32::MIN)
-      end
+    when "true"
+      return true
+    when "false"
+      return false
     {% end %}
     {%
       numeral_methods = {
@@ -191,4 +187,34 @@ end
 
 def UUID.new(node : XML::Node)
   UUID.new(node.content)
+end
+
+def Hash.new(node : XML::Node)
+  hash = new
+
+  element = node.children
+  if element.nil?
+    raise XML::SerializableError.new(
+      "Can't convert #{node.inspect} into Hash",
+      self.class.to_s,
+      nil,
+      Int32::MIN
+    )
+  end
+
+  element.each do |child|
+    next unless child.element?
+
+    parsed_key = child.name
+    if parsed_key.nil?
+      raise XML::SerializableError.new(
+        "Can't convert #{parsed_key.inspect} into #{K}",
+        self.class.to_s,
+        nil,
+        Int32::MIN
+      )
+    end
+    hash[parsed_key] = V.new(child)
+  end
+  hash
 end
