@@ -495,8 +495,23 @@ class Crystal::Call
   end
 
   def tuple_indexer_helper(args, arg_types, owner, instance_type, nilable)
+    index = tuple_indexer_helper_index(args.first, owner, instance_type, nilable)
+    return unless index
+
+    indexer_def = yield instance_type, index
+    indexer_match = Match.new(indexer_def, arg_types, MatchContext.new(owner, owner))
+    Matches.new([indexer_match] of Match, true)
+  end
+
+  private def tuple_indexer_helper_index(arg, owner, instance_type, nilable)
     arg = args.first
-    if arg.is_a?(NumberLiteral) && arg.kind == :i32
+
+    # Make it work with constants too
+    while arg.is_a?(Path) && (target_const = arg.target_const)
+      arg = target_const.value
+    end
+
+    if arg.is_a?(NumberLiteral) && arg.kind.i32?
       index = arg.value.to_i
       index += instance_type.size if index < 0
       in_bounds = (0 <= index < instance_type.size)
@@ -509,7 +524,7 @@ class Crystal::Call
       end
     elsif arg.is_a?(RangeLiteral)
       from = arg.from
-      if from.is_a?(NumberLiteral) && from.kind == :i32
+      if from.is_a?(NumberLiteral) && from.kind.i32?
         from_index = from.value.to_i
         from_index += instance_type.size if from_index < 0
         in_bounds = (0 <= from_index <= instance_type.size)
@@ -524,7 +539,7 @@ class Crystal::Call
       end
 
       to = arg.to
-      if to.is_a?(NumberLiteral) && to.kind == :i32
+      if to.is_a?(NumberLiteral) && to.kind.i32?
         to_index = to.value.to_i
         to_index += instance_type.size if to_index < 0
         to_index = (to_index - (arg.exclusive? ? 1 : 0)).clamp(-1, instance_type.size - 1)
@@ -547,13 +562,18 @@ class Crystal::Call
       return nil
     end
 
-    indexer_def = yield instance_type, index
-    indexer_match = Match.new(indexer_def, arg_types, MatchContext.new(owner, owner))
-    Matches.new([indexer_match] of Match, true)
+    index
   end
 
   def named_tuple_indexer_helper(args, arg_types, owner, instance_type, nilable)
-    case arg = args.first
+    arg = args.first
+
+    # Make it work with constants too
+    while arg.is_a?(Path) && (target_const = arg.target_const)
+      arg = target_const.value
+    end
+
+    case arg
     when SymbolLiteral, StringLiteral
       name = arg.value
       index = instance_type.name_index(name)
@@ -1185,9 +1205,9 @@ class Crystal::Call
       arg = typed_def.args[index]
       default_value = arg.default_value.as(MagicConstant)
       case default_value.name
-      when :__LINE__, :__END_LINE__
+      when .magic_line?, .magic_end_line?
         type = program.int32
-      when :__FILE__, :__DIR__
+      when .magic_file?, .magic_dir?
         type = program.string
       else
         default_value.raise "BUG: unknown magic constant: #{default_value.name}"

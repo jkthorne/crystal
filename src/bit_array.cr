@@ -25,10 +25,28 @@ struct BitArray
   #
   # *initial* optionally sets the starting value, `true` or `false`, for all bits
   # in the array.
-  def initialize(@size, initial : Bool = false)
+  def initialize(size : Int, initial : Bool = false)
+    raise ArgumentError.new("Negative bit array size: #{size}") if size < 0
+    @size = size.to_i
     value = initial ? UInt32::MAX : UInt32::MIN
     @bits = Pointer(UInt32).malloc(malloc_size, value)
     clear_unused_bits if initial
+  end
+
+  # Creates a new `BitArray` of *size* bits and invokes the given block once
+  # for each index of `self`, setting the bit at that index to `true` if the
+  # block is truthy.
+  #
+  # ```
+  # BitArray.new(5) { |i| i >= 3 }     # => BitArray[00011]
+  # BitArray.new(6) { |i| i if i < 2 } # => BitArray[110000]
+  # ```
+  def self.new(size : Int, & : Int32 -> _)
+    arr = new(size)
+    size.to_i.times do |i|
+      arr.unsafe_put(i, true) if yield i
+    end
+    arr
   end
 
   def ==(other : BitArray)
@@ -163,6 +181,73 @@ struct BitArray
       ba.clear_unused_bits
       ba
     end
+  end
+
+  # :inherit:
+  def all? : Bool
+    bit_index, sub_index = @size.divmod(32)
+
+    bit_index.times do |i|
+      return false unless @bits[i] == UInt32::MAX
+    end
+
+    return true if sub_index == 0
+    mask = ~(UInt32::MAX << sub_index)
+    @bits[bit_index] & mask == mask
+  end
+
+  # :inherit:
+  def any? : Bool
+    Slice.new(@bits, malloc_size).any? { |bits| bits != 0 }
+  end
+
+  # :inherit:
+  def none? : Bool
+    !any?
+  end
+
+  # Returns `true` if the collection contains *obj*, `false` otherwise.
+  #
+  # ```
+  # ba = BitArray.new(8, true)
+  # ba.includes?(true)  # => true
+  # ba.includes?(false) # => false
+  # ```
+  def includes?(obj : Bool) : Bool
+    obj ? any? : !all?
+  end
+
+  # :inherit:
+  def one? : Bool
+    c = 0
+    malloc_size.times do |i|
+      c += @bits[i].popcount
+      return false if c > 1
+    end
+    c == 1
+  end
+
+  # Returns the number of times that *item* is present in the bit array.
+  #
+  # ```
+  # ba = BitArray.new(12, true)
+  # ba[3] = false
+  # ba[7] = false
+  # ba.count(true)  # => 10
+  # ba.count(false) # => 2
+  # ```
+  def count(item : Bool) : Int32
+    ones_count = Slice.new(@bits, malloc_size).sum(&.popcount)
+    item ? ones_count : @size - ones_count
+  end
+
+  # :inherit:
+  def tally : Hash(Bool, Int32)
+    tallies = Hash(Bool, Int32).new
+    ones_count = count(true)
+    tallies[true] = ones_count if ones_count > 0
+    tallies[false] = @size - ones_count if ones_count < @size
+    tallies
   end
 
   # :inherit:
