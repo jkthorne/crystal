@@ -91,7 +91,7 @@ module XML
                 {% end %}
 
                 {% if value[:converter] %}
-                  %var{name} = {{value[:converter]}}.from_json(child)
+                  %var{name} = {{value[:converter]}}.from_xml(child)
                 {% else %}
                   %var{name} = ::Union({{value[:type]}}).new(child)
                 {% end %}
@@ -146,6 +146,9 @@ module XML
     def to_xml
       XML.build(version: "1.0") do |xml|
         {% begin %}
+          {% options = @type.annotation(::XML::Serializable::Options) %}
+          {% emit_nulls = options && options[:emit_nulls] %}
+
           {% properties = {} of Nil => Nil %}
           {% for ivar in @type.instance_vars %}
             {% ann = ivar.annotation(::XML::Element) %}
@@ -154,6 +157,10 @@ module XML
                 properties[ivar.id] = {
                   type: ivar.type,
                   key:  ((ann && ann[:key]) || ivar).id.stringify,
+                  root:             ann && ann[:root],
+                  converter:        ann && ann[:converter],
+                  emit_null:        (ann && (ann[:emit_null] != nil) ? ann[:emit_null] : emit_nulls),
+                  ignore_serialize: ann && ann[:ignore_serialize],  
                 }
               %}
             {% end %}
@@ -163,11 +170,37 @@ module XML
             {% for name, value in properties %}
               _{{name}} = @{{name}}
 
-              if _{{name}}
-                xml.element({{value[:key]}}) { xml.text _{{name}}.to_s }
-              else
-                xml.element({{value[:key]}})
+              {% if value[:ignore_serialize] %}
+                unless {{ value[:ignore_serialize] }}
+              {% end %}
+
+              {% unless value[:emit_null] %}
+                unless _{{name}}.nil?
+              {% end %}
+
+              xml.element({{value[:key]}}) do
+                {% if value[:converter] %}
+                  if _{{name}}
+                    {{ value[:converter] }}.to_xml(_{{name}}, xml)
+                  else
+                    nil.to_xml(xml)
+                  end
+                {% else %}
+                  _{{name}}.to_xml(xml)
+                {% end %}
+                
+                if _{{name}}
+                else
+                end
               end
+
+              {% unless value[:emit_null] %}
+                end
+              {% end %}
+
+              {% if value[:ignore_serialize] %}
+                end
+              {% end %}
             {% end %}
           end
         {% end %}
@@ -181,7 +214,7 @@ module XML
     end
 
     module Unmapped
-      # TODO: use alias other then JSON::Any
+      # TODO: use alias other then XML::Any
       @[XML::Element(ignore: true)]
       property xml_unmapped = Hash(String, XML::Any).new
 

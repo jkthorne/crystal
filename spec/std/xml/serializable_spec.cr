@@ -176,6 +176,20 @@ class XMLAttrWithDefaults
   property h = [1, 2, 3]
 end
 
+class XMLAttrWithTimeEpoch
+  include XML::Serializable
+
+  @[XML::Element(converter: Time::EpochConverter)]
+  property value : Time
+end
+
+# class XMLAttrWithTimeEpochMillis
+#   include XML::Serializable
+
+#   @[XML::Element(converter: Time::EpochMillisConverter)]
+#   property value : Time
+# end
+
 describe "XML mapping" do
   it "works with record" do
     xml = <<-XML
@@ -452,17 +466,19 @@ describe "XML mapping" do
   end
 
   it "emit_nulls option" do
-    original_xml = <<-XML
-      <?xml version="1.0"?>
-      <XMLAttrPerson>
-        <name>John</name>
-      </XMLAttrPerson>\n
-      XML
+    original_xml = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrPerson>"
+      str << "<name>John</name>"
+      str << "</XMLAttrPerson>\n"
+    end
 
     expected_xml = String.build do |str|
       str << "<?xml version=\"1.0\"?>\n"
       str << "<XMLAttrPersonEmittingNullsByOptions>"
-      str << "<name>John</name><age/><value1/><value2/>"
+      str << "<name>John</name>"
+      str << "<age></age>"
+      str << "<value1></value1>"
       str << "</XMLAttrPersonEmittingNullsByOptions>\n"
     end
 
@@ -506,7 +522,7 @@ describe "XML mapping" do
     expected_xml = String.build do |str|
       str << "<?xml version=\"1.0\"?>\n"
       str << "<XMLAttrWithTime>"
-      str << "<value>2014-10-31 23:37:16 UTC</value>" # NOTE: should this include `UTC`
+      str << "<value>2014-10-31 23:37:16</value>" # NOTE: should this include `UTC`
       str << "</XMLAttrWithTime>\n"
     end
 
@@ -540,9 +556,7 @@ describe "XML mapping" do
   it "outputs with converter when nilable" do
     xml = String.build do |str|
       str << "<?xml version=\"1.0\"?>\n"
-      str << "<XMLAttrWithNilableTime>"
-      str << "<value/>"
-      str << "</XMLAttrWithNilableTime>\n"
+      str << "<XMLAttrWithNilableTime/>\n"
     end
 
     obj = XMLAttrWithNilableTime.new
@@ -553,7 +567,7 @@ describe "XML mapping" do
     xml = String.build do |str|
       str << "<?xml version=\"1.0\"?>\n"
       str << "<XMLAttrWithNilableTimeEmittingNull>"
-      str << "<value/>"
+      str << "<value></value>"
       str << "</XMLAttrWithNilableTimeEmittingNull>\n"
     end
 
@@ -662,79 +676,172 @@ describe "XML mapping" do
 
   describe "parses json with defaults" do
     it "mixed" do
-      xml_1 = <<-XML
-        <?xml version="1.0"?>
-        <XMLAttrWithSmallIntegers>
-          <a>1</a>
-          <b>2</b>
-        </XMLAttrWithSmallIntegers>
-        XML
-
-      obj = XMLAttrWithDefaults.from_xml(xml_1)
+      obj = XMLAttrWithDefaults.from_xml(<<-XML
+      <?xml version="1.0"?>
+      <JSONAttrWithDefaults>
+        <a>1</a>
+        <b>bla</b>
+      </JSONAttrWithDefaults>
+      XML
+      )
       obj.a.should eq 1
       obj.b.should eq "bla"
 
-      # xml = XMLAttrWithDefaults.from_xml(%({"a":1}))
-      # xml.a.should eq 1
-      # xml.b.should eq "Haha"
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+      <?xml version="1.0"?>
+      <JSONAttrWithDefaults>
+        <a>1</a>
+      </JSONAttrWithDefaults>
+      XML
+      )
+      xml.a.should eq 1
+      xml.b.should eq "Haha"
 
-      # xml = XMLAttrWithDefaults.from_xml(%({"b":"bla"}))
-      # xml.a.should eq 11
-      # xml.b.should eq "bla"
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+      <?xml version="1.0"?>
+      <JSONAttrWithDefaults>
+        <b>bla</b>
+      </JSONAttrWithDefaults>
+      XML
+      )
+      xml.a.should eq 11
+      xml.b.should eq "bla"
 
-      # xml = XMLAttrWithDefaults.from_xml(%({}))
-      # xml.a.should eq 11
-      # xml.b.should eq "Haha"
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+      <?xml version="1.0"?>
+      <JSONAttrWithDefaults>
+      </JSONAttrWithDefaults>
+      XML
+      )
+      xml.a.should eq 11
+      xml.b.should eq "Haha"
 
-      # xml = XMLAttrWithDefaults.from_xml(%({"a":null,"b":null}))
+      # xml = XMLAttrWithDefaults.from_xml(<<-XML
+      # <?xml version="1.0"?>
+      # <JSONAttrWithDefaults>
+      #   <a></a>
+      #   <b></b>
+      # </JSONAttrWithDefaults>
+      # XML
+      # )
       # xml.a.should eq 11
       # xml.b.should eq "Haha"
     end
 
-    #   it "bool" do
-    #     json = JSONAttrWithDefaults.from_json(%({}))
-    #     json.c.should eq true
-    #     typeof(json.c).should eq Bool
-    #     json.d.should eq false
-    #     typeof(json.d).should eq Bool
+    it "bool" do
+      # xml = XMLAttrWithDefaults.from_xml(<<-XML
+      # <?xml version="1.0"?>
+      # <XMLAttrWithDefaults>
+      # </XMLAttrWithDefaults>
+      # XML
+      # )
+      # xml.c.should eq true
+      # typeof(xml.c).should eq Bool
+      # xml.d.should eq false
+      # typeof(xml.d).should eq Bool
 
-    #     json = JSONAttrWithDefaults.from_json(%({"c":false}))
-    #     json.c.should eq false
-    #     json = JSONAttrWithDefaults.from_json(%({"c":true}))
-    #     json.c.should eq true
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+      <?xml version="1.0"?>
+      <XMLAttrWithDefaults>
+        <c>false</c>
+      </XMLAttrWithDefaults>
+      XML
+      )
+      xml.c.should eq false
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+      <?xml version="1.0"?>
+      <XMLAttrWithDefaults>
+        <c>true</c>
+      </XMLAttrWithDefaults>
+      XML
+      )
+      xml.c.should eq true
 
-    #     json = JSONAttrWithDefaults.from_json(%({"d":false}))
-    #     json.d.should eq false
-    #     json = JSONAttrWithDefaults.from_json(%({"d":true}))
-    #     json.d.should eq true
-    #   end
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+      <?xml version="1.0"?>
+      <XMLAttrWithDefaults>
+        <d>false</d>
+      </XMLAttrWithDefaults>
+      XML
+      )
+      xml.d.should eq false
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+      <?xml version="1.0"?>
+      <XMLAttrWithDefaults>
+        <d>true</d>
+      </XMLAttrWithDefaults>
+      XML
+      )
+      xml.d.should eq true
+    end
 
-    #   it "with nilable" do
-    #     json = JSONAttrWithDefaults.from_json(%({}))
+    it "with nilable" do
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+        <?xml version="1.0"?>
+        <XMLAttrWithDefaults>
+        </XMLAttrWithDefaults>
+        XML
+      )
 
-    #     json.e.should eq false
-    #     typeof(json.e).should eq(Bool | Nil)
+      xml.e.should eq false
+      typeof(xml.e).should eq(Bool | Nil)
 
-    #     json.f.should eq 1
-    #     typeof(json.f).should eq(Int32 | Nil)
+      xml.f.should eq 1
+      typeof(xml.f).should eq(Int32 | Nil)
 
-    #     json.g.should eq nil
-    #     typeof(json.g).should eq(Int32 | Nil)
+      xml.g.should eq nil
+      typeof(xml.g).should eq(Int32 | Nil)
 
-    #     json = JSONAttrWithDefaults.from_json(%({"e":false}))
-    #     json.e.should eq false
-    #     json = JSONAttrWithDefaults.from_json(%({"e":true}))
-    #     json.e.should eq true
-    #   end
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+        <?xml version="1.0"?>
+        <XMLAttrWithDefaults>
+          <e>false</e>
+        </XMLAttrWithDefaults>
+        XML
+      )
+      xml.e.should eq false
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+        <?xml version="1.0"?>
+        <XMLAttrWithDefaults>
+          <e>true</e>
+        </XMLAttrWithDefaults>
+        XML
+      )
+      xml.e.should eq true
+    end
 
-    #   it "create new array every time" do
-    #     json = JSONAttrWithDefaults.from_json(%({}))
-    #     json.h.should eq [1, 2, 3]
-    #     json.h << 4
-    #     json.h.should eq [1, 2, 3, 4]
+    it "create new array every time" do
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+        <?xml version="1.0"?>
+        <XMLAttrWithDefaults>
+        </XMLAttrWithDefaults>
+        XML
+      )
+      xml.h.should eq [1, 2, 3]
+      xml.h << 4
+      xml.h.should eq [1, 2, 3, 4]
 
-    #     json = JSONAttrWithDefaults.from_json(%({}))
-    #     json.h.should eq [1, 2, 3]
-    #   end
+      xml = XMLAttrWithDefaults.from_xml(<<-XML
+        <?xml version="1.0"?>
+        <XMLAttrWithDefaults>
+        </XMLAttrWithDefaults>
+        XML
+      )
+      xml.h.should eq [1, 2, 3]
+    end
+  end
+
+  it "uses Time::EpochConverter" do
+    string = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrWithTimeEpoch>"
+      str << "<value>1459859781</value>"
+      str << "</XMLAttrWithTimeEpoch>\n"
+    end
+
+    xml = XMLAttrWithTimeEpoch.from_xml(string)
+    xml.value.should be_a(Time)
+    xml.value.should eq(Time.unix(1459859781))
+    xml.to_xml.should eq(string)
   end
 end

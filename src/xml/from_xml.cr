@@ -87,7 +87,7 @@ def Union.new(node : XML::Node)
       string = node.content
       {% for type in non_primitives %}
         begin
-          return {{type}}.from_json(string)
+          return {{type}}.from_xml(string)
         rescue XML::Error
           # Ignore
         end
@@ -102,7 +102,7 @@ def Time.new(node : XML::Node)
 end
 
 struct Time::Format
-  def from_json(node : XML::Node) : Time
+  def from_xml(node : XML::Node) : Time
     string = node.content
     parse(string, Time::Location::UTC)
   end
@@ -112,30 +112,29 @@ def Nil.new(node : XML::Node)
   nil
 end
 
-# {% for type, method in {
-#                          "Int8"   => "i8",
-#                          "Int16"  => "i16",
-#                          "Int32"  => "i32",
-#                          "Int64"  => "i64",
-#                          "UInt8"  => "u8",
-#                          "UInt16" => "u16",
-#                          "UInt32" => "u32",
-#                          "UInt64" => "u64",
-#                        } %}
-#   def {{type.id}}.new(node : XML::Node)
-#     begin
-#       value.to_{{method.id}}
-#     rescue ex : OverflowError | ArgumentError
-#       raise XML::ParseException.new("Can't read {{type.id}}", nil, ex)
-#     end
-#   end
+{% for type, method in {
+                         "Int8"   => "i8",
+                         "Int16"  => "i16",
+                         "Int32"  => "i32",
+                         "Int64"  => "i64",
+                         "UInt8"  => "u8",
+                         "UInt16" => "u16",
+                         "UInt32" => "u32",
+                         "UInt64" => "u64",
+                       } %}
+  def {{type.id}}.new(node : XML::Node)
+    begin
+      value.to_{{method.id}}
+    rescue ex : OverflowError | ArgumentError
+      raise XML::ParseException.new("Can't read {{type.id}}", nil, ex)
+    end
+  end
 
-#   def {{type.id}}.from_json_object_key?(key : String)
-#     key.to_{{method.id}}?
-#   end
-# {% end %}
+  def {{type.id}}.from_xml_object_key?(key : String)
+    key.to_{{method.id}}?
+  end
+{% end %}
 
-# TODO(jack): testing parsing
 def Nil.new(node : XML::Node)
   nil
 end
@@ -178,7 +177,7 @@ def String.new(node : XML::Node)
   node.content
 end
 
-def Object.from_json(string_or_io, root : String)
+def Object.from_xml(string_or_io, root : String)
   parser = XML::Reader.new(string_or_io)
   parser.on_key!(root) do
     new parser
@@ -217,4 +216,16 @@ def Hash.new(node : XML::Node)
     hash[parsed_key] = V.new(child)
   end
   hash
+end
+
+module Time::EpochConverter
+  def self.from_xml(node : XML::Node) : Time
+    Time.unix(node.content.to_i)
+  end
+end
+
+module Time::EpochMillisConverter
+  def self.from_xml(node : XML::Node) : Time
+    Time.unix_ms(node.content.to_i)
+  end
 end
