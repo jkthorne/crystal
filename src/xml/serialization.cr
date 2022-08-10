@@ -67,7 +67,7 @@ module XML
             if node.document?
               root = node.root
               if root.nil?
-                raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, Int32::MIN)
+                raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, 0)
               else
                 children = root.children
               end
@@ -108,7 +108,7 @@ module XML
           {% for name, value in properties %}
             {% unless value[:nilable] || value[:has_default] %}
               if %var{name}.nil? && !%found{name} && !::Union({{value[:type]}}).nilable?
-                raise ::XML::SerializableError.new("Missing XML node: {{value[:key].id}}", self.class.to_s, nil, Int32::MIN)
+                raise ::XML::SerializableError.new("Missing XML node: {{value[:key].id}}", self.class.to_s, nil, 0)
               end
             {% end %}
 
@@ -155,12 +155,12 @@ module XML
             {% unless ann && (ann[:ignore] || ann[:ignore_serialize]) %}
               {%
                 properties[ivar.id] = {
-                  type: ivar.type,
-                  key:  ((ann && ann[:key]) || ivar).id.stringify,
+                  type:             ivar.type,
+                  key:              ((ann && ann[:key]) || ivar).id.stringify,
                   root:             ann && ann[:root],
                   converter:        ann && ann[:converter],
                   emit_null:        (ann && (ann[:emit_null] != nil) ? ann[:emit_null] : emit_nulls),
-                  ignore_serialize: ann && ann[:ignore_serialize],  
+                  ignore_serialize: ann && ann[:ignore_serialize],
                 }
               %}
             {% end %}
@@ -188,7 +188,7 @@ module XML
                 {% else %}
                   _{{name}}.to_xml(xml)
                 {% end %}
-                
+
                 if _{{name}}
                 else
                 end
@@ -209,7 +209,7 @@ module XML
 
     module Strict
       protected def on_unknown_xml_attribute(node, key)
-        raise ::XML::SerializableError.new("Unknown XML attribute: #{key}", self.class.to_s, nil, Int32::MIN)
+        raise ::XML::SerializableError.new("Unknown XML attribute: #{key}", self.class.to_s, nil, 0)
       end
     end
 
@@ -224,6 +224,118 @@ module XML
         end
       end
     end
+
+    # Tells this class to decode XML by using a field as a discriminator.
+    #
+    # - *field* must be the field name to use as a discriminator
+    # - *mapping* must be a hash or named tuple where each key-value pair
+    #   maps a discriminator value to a class to deserialize
+    #
+    # For example:
+    #
+    # ```
+    # require "xml"
+    #
+    # abstract class Shape
+    #   include XML::Serializable
+    #
+    #   use_xml_discriminator "type", {point: Point, circle: Circle}
+    #
+    #   property type : String
+    # end
+    #
+    # class Point < Shape
+    #   property x : Int32
+    #   property y : Int32
+    # end
+    #
+    # class Circle < Shape
+    #   property x : Int32
+    #   property y : Int32
+    #   property radius : Int32
+    # end
+    #
+    # Shape.from_xml(TODO: update) # => #<Point:0x10373ae20 @type="point", @x=1, @y=2>
+    # Shape.from_xml(TODO: update) # => #<Circle:0x106a4cea0 @type="circle", @x=1, @y=2, @radius=3>
+    # ```
+    # macro use_xml_discriminator(field, mapping)
+    #   {% unless mapping.is_a?(HashLiteral) || mapping.is_a?(NamedTupleLiteral) %}
+    #     {% mapping.raise "mapping argument must be a HashLiteral or a NamedTupleLiteral, not #{mapping.class_name.id}" %}
+    #   {% end %}
+
+    #   def self.new(node : ::XML::Node)
+    #     # location = pull.location TODO: add location
+
+    #     discriminator_value = nil
+    #     xml = ""
+
+    #     begin
+    #       if node.document?
+    #         root = node.root
+    #         if root.nil?
+    #           raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, 0)
+    #         else
+    #           children = root.children
+    #         end
+    #       else
+    #         children = node.children
+    #       end
+    #     rescue exc : ::XML::Error
+    #       raise ::XML::SerializableError.new(exc.message, self.class.to_s, nil, exc.line_number)
+    #     end
+
+    #     # Try to find the discriminator while also getting the raw
+    #     # string value of the parsed XML, so then we can pass it
+    #     # to the final type.
+    #     # xml = XML.build_fragment do |builder|
+    #       children.each do |child|
+    #         if child.name == {{field.id.stringify}}
+    #           # TODO: should be removed
+    #           case child.content
+    #           when "true"
+    #             discriminator_value = true
+    #           when "false"
+    #             discriminator_value = false
+    #           when .to_i?
+    #             discriminator_value = child.content.to_i
+    #           else
+    #             discriminator_value = child.content
+    #           end
+
+    #           xml = XML.build { |b| b.element(child.name) { discriminator_value } }
+    #           # builder.element(child.name) { builder.text discriminator_value.to_s }
+    #         else
+    #           # builder.element(child.name) { builder.text node.children.to_s }
+    #         end
+    #       end
+    #     # end
+
+    #     if discriminator_value.nil?
+    #       raise ::XML::SerializableError.new("Missing XML discriminator field '{{field.id}}'", to_s, nil, 0)
+    #     end
+
+    #     case discriminator_value
+    #     {% for key, value in mapping %}
+    #       {% if mapping.is_a?(NamedTupleLiteral) %}
+    #         when {{key.id.stringify}}
+    #       {% else %}
+    #         {% if key.is_a?(StringLiteral) %}
+    #           when {{key}}
+    #         {% elsif key.is_a?(NumberLiteral) || key.is_a?(BoolLiteral) %}
+    #           when {{key.id}}
+    #         {% elsif key.is_a?(Path) %}
+    #           when {{key.resolve}}
+    #         {% else %}
+    #           {% key.raise "mapping keys must be one of StringLiteral, NumberLiteral, BoolLiteral, or Path, not #{key.class_name.id}" %}
+    #         {% end %}
+    #       {% end %}
+    #       {{value.id}}.from_xml(xml)
+    #     {% end %}
+    #     else
+    #       raise ::XML::SerializableError.new("Unknown '{{field.id}}' discriminator value: #{discriminator_value.inspect}", to_s, nil, 0)
+    #     end
+    #   end
+    # end
   end
 
   class SerializableError < XML::Error

@@ -28,6 +28,12 @@ class String
   end
 end
 
+struct Bool
+  def to_xml(xml : XML::Builder) : Nil
+    xml.text(self.to_s)
+  end
+end
+
 class Hash
   # Serializes this Hash into XML.
   #
@@ -96,5 +102,32 @@ end
 module Time::EpochMillisConverter
   def self.to_xml(value : Time, xml : XML::Builder) : Nil
     xml.text(value.to_unix_ms.to_s)
+  end
+end
+
+# Converter to be used with `XML::Serializable` to read the raw
+# value of a XML object property as a `String`.
+#
+# It can be useful to read ints and floats without losing precision,
+# or to read an object and deserialize it later based on some
+# condition.
+#
+# ```
+# require "xml"
+#
+# class Raw
+#   include XML::Serializable
+#
+#   @[XML::Element(converter: String::RawConverter)]
+#   property value : String
+# end
+#
+# raw = Raw.from_xml(%({"value": 123456789876543212345678987654321}))
+# raw.value  # => "123456789876543212345678987654321"
+# raw.to_xml # => %({"value":123456789876543212345678987654321})
+# ```
+module String::RawConverter
+  def self.to_xml(value : String, xml : XML::Builder) : Nil
+    xml.text(value.to_s)
   end
 end

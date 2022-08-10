@@ -92,7 +92,7 @@ def Union.new(node : XML::Node)
           # Ignore
         end
       {% end %}
-      raise XML::Error.new("Couldn't parse #{self} from #{string}", Int32::MIN)
+      raise XML::Error.new("Couldn't parse #{self} from #{string}", 0)
     {% end %}
   {% end %}
 end
@@ -156,7 +156,7 @@ def Array.new(node : XML::Node)
     if node.document?
       root = node.root
       if root.nil?
-        raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, Int32::MIN)
+        raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, 0)
       else
         children = root.children
       end
@@ -226,6 +226,12 @@ end
 
 module Time::EpochMillisConverter
   def self.from_xml(node : XML::Node) : Time
-    Time.unix_ms(node.content.to_i)
+    Time.unix_ms(node.content.to_i64)
+  end
+end
+
+module String::RawConverter
+  def self.from_xml(node : XML::Node) : String
+    node.content.to_s
   end
 end

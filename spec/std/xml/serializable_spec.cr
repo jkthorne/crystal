@@ -1,5 +1,7 @@
 require "../spec_helper"
+require "big"
 require "xml"
+require "big/xml"
 require "uuid"
 
 record XMLAttrPoint, x : Int32, y : Int32 do
@@ -90,11 +92,11 @@ class XMLAttrWithUUID
   property value : UUID
 end
 
-# class XMLAttrWithBigDecimal
-#   include XML::Serializable
+class XMLAttrWithBigDecimal
+  include XML::Serializable
 
-#   property value : BigDecimal
-# end
+  property value : BigDecimal
+end
 
 class XMLAttrWithSimpleMapping
   include XML::Serializable
@@ -183,11 +185,175 @@ class XMLAttrWithTimeEpoch
   property value : Time
 end
 
-# class XMLAttrWithTimeEpochMillis
+class XMLAttrWithTimeEpochMillis
+  include XML::Serializable
+
+  @[XML::Element(converter: Time::EpochMillisConverter)]
+  property value : Time
+end
+
+class XMLAttrWithRaw
+  include XML::Serializable
+
+  @[XML::Element(converter: String::RawConverter)]
+  property value : String
+end
+
+# TODO: more models
+
+class XMLAttrWithPresence
+  include XML::Serializable
+
+  @[XML::Element(presence: true)]
+  property first_name : String?
+
+  @[XML::Element(presence: true)]
+  property last_name : String?
+
+  @[XML::Element(ignore: true)]
+  getter? first_name_present : Bool
+
+  @[XML::Element(ignore: true)]
+  getter? last_name_present : Bool
+end
+
+class XMLAttrWithPresenceAndIgnoreSerialize
+  include XML::Serializable
+
+  @[XML::Element(presence: true, ignore_serialize: ignore_first_name?)]
+  property first_name : String?
+
+  @[XML::Element(presence: true, ignore_serialize: last_name.nil? && !last_name_present?, emit_null: true)]
+  property last_name : String?
+
+  @[XML::Element(ignore: true)]
+  getter? first_name_present : Bool = false
+
+  @[XML::Element(ignore: true)]
+  getter? last_name_present : Bool = false
+
+  def initialize(@first_name : String? = nil, @last_name : String? = nil)
+  end
+
+  def ignore_first_name?
+    first_name.nil? || first_name == ""
+  end
+end
+
+class XMLAttrWithQueryAttributes
+  include XML::Serializable
+
+  property? foo : Bool
+
+  @[XML::Element(key: "is_bar", presence: true)]
+  property? bar : Bool = false
+
+  @[XML::Element(ignore: true)]
+  getter? bar_present : Bool
+end
+
+module XMLAttrModule
+  property moo : Int32 = 10
+end
+
+class XMLAttrModuleTest
+  include XMLAttrModule
+  include XML::Serializable
+
+  @[XML::Element(key: "phoo")]
+  property foo = 15
+
+  def initialize; end
+
+  def to_tuple
+    {@moo, @foo}
+  end
+end
+
+class XMLAttrModuleTest2 < XMLAttrModuleTest
+  property bar : Int32
+
+  def initialize(@bar : Int32); end
+
+  def to_tuple
+    {@moo, @foo, @bar}
+  end
+end
+
+module XMLNamespace
+  struct FooRequest
+    include XML::Serializable
+
+    getter foo : Foo
+    getter bar = Bar.new
+  end
+
+  struct Foo
+    include XML::Serializable
+    getter id = "id:foo"
+  end
+
+  struct Bar
+    include XML::Serializable
+    getter id = "id:bar"
+
+    def initialize # Allow for default value above
+    end
+  end
+end
+
+# abstract class XMLShape
 #   include XML::Serializable
 
-#   @[XML::Element(converter: Time::EpochMillisConverter)]
-#   property value : Time
+#   use_xml_discriminator "type", {point: XMLPoint, circle: XMLCircle}
+
+#   property type : String
+# end
+
+# class XMLPoint < XMLShape
+#   property x : Int32
+#   property y : Int32
+# end
+
+# class XMLCircle < XMLShape
+#   property x : Int32
+#   property y : Int32
+#   property radius : Int32
+# end
+
+# enum XMLVariableDiscriminatorEnumFoo
+#   Foo = 4
+# end
+
+# enum XMLVariableDiscriminatorEnumFoo8 : UInt8
+#   Foo = 1_8
+# end
+
+# class XMLVariableDiscriminatorValueType
+#   include XML::Serializable
+
+#   use_xml_discriminator "type", {
+#                                         0 => XMLVariableDiscriminatorNumber,
+#     "1"                                   => XMLVariableDiscriminatorString,
+#     true                                  => XMLVariableDiscriminatorBool,
+#     XMLVariableDiscriminatorEnumFoo::Foo  => XMLVariableDiscriminatorEnum,
+#     XMLVariableDiscriminatorEnumFoo8::Foo => XMLVariableDiscriminatorEnum8,
+#   }
+# end
+
+# class XMLVariableDiscriminatorNumber < XMLVariableDiscriminatorValueType
+# end
+
+# class XMLVariableDiscriminatorString < XMLVariableDiscriminatorValueType
+# end
+
+# class XMLVariableDiscriminatorBool < XMLVariableDiscriminatorValueType
+# end
+
+# class XMLVariableDiscriminatorEnum < XMLVariableDiscriminatorValueType
+# end
+
+# class XMLVariableDiscriminatorEnum8 < XMLVariableDiscriminatorValueType
 # end
 
 describe "XML mapping" do
@@ -844,4 +1010,452 @@ describe "XML mapping" do
     xml.value.should eq(Time.unix(1459859781))
     xml.to_xml.should eq(string)
   end
+
+  it "uses Time::EpochMillisConverter" do
+    string = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrWithTimeEpochMillis>"
+      str << "<value>1459860483856</value>"
+      str << "</XMLAttrWithTimeEpochMillis>\n"
+    end
+
+    xml = XMLAttrWithTimeEpochMillis.from_xml(string)
+    xml.value.should be_a(Time)
+    xml.value.should eq(Time.unix_ms(1459860483856))
+    xml.to_xml.should eq(string)
+  end
+
+  it "parses raw value from int" do
+    string = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrWithRaw>"
+      str << "<value>123456789123456789123456789123456789</value>"
+      str << "</XMLAttrWithRaw>\n"
+    end
+
+    xml = XMLAttrWithRaw.from_xml(string)
+    xml.value.should eq("123456789123456789123456789123456789")
+    xml.to_xml.should eq(string)
+  end
+
+  it "parses raw value from float" do
+    string = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrWithRaw>"
+      str << "<value>123456789123456789.123456789123456789</value>"
+      str << "</XMLAttrWithRaw>\n"
+    end
+
+    xml = XMLAttrWithRaw.from_xml(string)
+    xml.value.should eq("123456789123456789.123456789123456789")
+    xml.to_xml.should eq(string)
+  end
+
+  # it "parses raw value from object" do
+  #   string = String.build do |str|
+  #     str << "<?xml version=\"1.0\"?>\n"
+  #     str << "<XMLAttrWithRaw>"
+  #     str << "<value><x>foo</x></value>"
+  #     str << "</XMLAttrWithRaw>\n"
+  #   end
+
+  #   xml = XMLAttrWithRaw.from_xml(string)
+  #   xml.value.should eq(%(<x>foo</x>))
+  #   xml.to_xml.should eq(string)
+  # end
+
+  # it "parses with root" do
+  #   json = %({"result":{"heroes":[{"name":"Batman"}]}})
+  #   result = JSONAttrWithRoot.from_json(json)
+  #   result.result.should be_a(Array(JSONAttrPerson))
+  #   result.result.first.name.should eq "Batman"
+  #   result.to_json.should eq(json)
+  # end
+
+  # it "parses with nilable root" do
+  #   json = %({"result":null})
+  #   result = JSONAttrWithNilableRoot.from_json(json)
+  #   result.result.should be_nil
+  #   result.to_json.should eq("{}")
+  # end
+
+  # it "parses with nilable root and emit null" do
+  #   json = %({"result":null})
+  #   result = JSONAttrWithNilableRootEmitNull.from_json(json)
+  #   result.result.should be_nil
+  #   result.to_json.should eq(json)
+  # end
+
+  # it "parses nilable union" do
+  #   obj = JSONAttrWithNilableUnion.from_json(%({"value": 1}))
+  #   obj.value.should eq(1)
+  #   obj.to_json.should eq(%({"value":1}))
+
+  #   obj = JSONAttrWithNilableUnion.from_json(%({"value": null}))
+  #   obj.value.should be_nil
+  #   obj.to_json.should eq(%({}))
+
+  #   obj = JSONAttrWithNilableUnion.from_json(%({}))
+  #   obj.value.should be_nil
+  #   obj.to_json.should eq(%({}))
+  # end
+
+  # it "parses nilable union2" do
+  #   obj = JSONAttrWithNilableUnion2.from_json(%({"value": 1}))
+  #   obj.value.should eq(1)
+  #   obj.to_json.should eq(%({"value":1}))
+
+  #   obj = JSONAttrWithNilableUnion2.from_json(%({"value": null}))
+  #   obj.value.should be_nil
+  #   obj.to_json.should eq(%({}))
+
+  #   obj = JSONAttrWithNilableUnion2.from_json(%({}))
+  #   obj.value.should be_nil
+  #   obj.to_json.should eq(%({}))
+  # end
+
+  describe "parses XML with presence markers" do
+    it "parses person with absent attributes" do
+      string = String.build do |str|
+        str << "<?xml version=\"1.0\"?>\n"
+        str << "<XMLAttrWithPresence>"
+        str << "<first_name></first_name>"
+        str << "</XMLAttrWithPresence>\n"
+      end
+
+      xml = XMLAttrWithPresence.from_xml(string)
+      xml.first_name.should be_nil
+      xml.first_name_present?.should be_true
+      xml.last_name.should be_nil
+      xml.last_name_present?.should be_false
+    end
+  end
+
+  describe "serializes XML with presence markers and ignore_serialize" do
+    context "ignore_serialize is set to a method which returns true when value is nil or empty string" do
+      it "ignores field when value is empty string" do
+        string = String.build do |str|
+          str << "<?xml version=\"1.0\"?>\n"
+          str << "<XMLAttrWithPresenceAndIgnoreSerialize>"
+          str << "<first_name></first_name>"
+          str << "</XMLAttrWithPresenceAndIgnoreSerialize>\n"
+        end
+
+        xml = XMLAttrWithPresenceAndIgnoreSerialize.from_xml(string)
+        xml.first_name_present?.should be_true
+        xml.to_xml.should eq(%(<?xml version="1.0"?>\n<XMLAttrWithPresenceAndIgnoreSerialize/>\n))
+      end
+
+      it "ignores field when value is nil" do
+        string = String.build do |str|
+          str << "<?xml version=\"1.0\"?>\n"
+          str << "<XMLAttrWithPresenceAndIgnoreSerialize>"
+          str << "<first_name/>"
+          str << "</XMLAttrWithPresenceAndIgnoreSerialize>\n"
+        end
+
+        xml = XMLAttrWithPresenceAndIgnoreSerialize.from_xml(string)
+        xml.first_name_present?.should be_true
+        xml.to_xml.should eq(%(<?xml version="1.0"?>\n<XMLAttrWithPresenceAndIgnoreSerialize/>\n))
+      end
+    end
+
+    context "ignore_serialize is set to conditional expressions 'last_name.nil? && !last_name_present?'" do
+      # it "emits null when value is null and @last_name_present is true" do
+      #   string = String.build do |str|
+      #     str << "<?xml version=\"1.0\"?>\n"
+      #     str << "<XMLAttrWithPresenceAndIgnoreSerialize>"
+      #     str << "<last_name/>"
+      #     str << "</XMLAttrWithPresenceAndIgnoreSerialize>\n"
+      #   end
+      #   xml = XMLAttrWithPresenceAndIgnoreSerialize.from_xml(string)
+      #   xml.last_name_present?.should be_true
+      #   xml.to_xml.should eq(%({"last_name":null}))
+      # end
+
+      it "does not emit null when value is null and @last_name_present is false" do
+        string = String.build do |str|
+          str << "<?xml version=\"1.0\"?>\n"
+          str << "<XMLAttrWithPresenceAndIgnoreSerialize/>\n"
+        end
+
+        xml = XMLAttrWithPresenceAndIgnoreSerialize.from_xml(string)
+        xml.last_name_present?.should be_false
+        xml.to_xml.should eq(string)
+      end
+
+      # it "emits field when value is not nil and @last_name_present is false" do
+      #   xml = XMLAttrWithPresenceAndIgnoreSerialize.new(last_name: "something")
+      #   xml.last_name_present?.should be_false
+      #   xml.to_xml.should eq(%({"last_name":"something"}))
+      # end
+
+      # it "emits field when value is not nil and @last_name_present is true" do
+      #   string = String.build do |str|
+      #     str << "<?xml version=\"1.0\"?>\n"
+      #     str << "<XMLAttrWithPresenceAndIgnoreSerialize>"
+      #     str << "<last_name>something</last_name>"
+      #     str << "</XMLAttrWithPresenceAndIgnoreSerialize>\n"
+      #   end
+
+      #   xml = XMLAttrWithPresenceAndIgnoreSerialize.from_xml(string)
+      #   xml.last_name_present?.should be_true
+      #   xml.to_xml.should eq(%({"last_name":"something"}))
+      # end
+    end
+  end
+
+  describe "with query attributes" do
+    it "defines query getter" do
+      string = String.build do |str|
+        str << "<?xml version=\"1.0\"?>\n"
+        str << "<XMLAttrWithQueryAttributes>"
+        str << "<foo>true</foo>"
+        str << "</XMLAttrWithQueryAttributes>\n"
+      end
+
+      xml = XMLAttrWithQueryAttributes.from_xml(string)
+      xml.foo?.should be_true
+      xml.bar?.should be_false
+    end
+
+    it "defines query getter with class restriction" do
+      {% begin %}
+        {% methods = XMLAttrWithQueryAttributes.methods %}
+        {{ methods.find(&.name.==("foo?")).return_type }}.should eq(Bool)
+        {{ methods.find(&.name.==("bar?")).return_type }}.should eq(Bool)
+      {% end %}
+    end
+
+    it "defines non-query setter and presence methods" do
+      string = String.build do |str|
+        str << "<?xml version=\"1.0\"?>\n"
+        str << "<XMLAttrWithQueryAttributes>"
+        str << "<foo>false</foo>"
+        str << "</XMLAttrWithQueryAttributes>\n"
+      end
+
+      xml = XMLAttrWithQueryAttributes.from_xml(string)
+      xml.bar_present?.should be_false
+      xml.bar = true
+      xml.bar?.should be_true
+    end
+
+    it "maps non-query attributes" do
+      string = String.build do |str|
+        str << "<?xml version=\"1.0\"?>\n"
+        str << "<XMLAttrWithQueryAttributes>"
+        str << "<foo>false</foo>"
+        str << "<is_bar>false</is_bar>"
+        str << "</XMLAttrWithQueryAttributes>\n"
+      end
+
+      xml = XMLAttrWithQueryAttributes.from_xml(string)
+      xml.bar_present?.should be_true
+      xml.bar?.should be_false
+      xml.bar = true
+      xml.to_xml.should eq(%(<?xml version="1.0"?>\n<XMLAttrWithQueryAttributes><foo>false</foo><is_bar>true</is_bar></XMLAttrWithQueryAttributes>\n))
+    end
+
+    # it "raises if non-nilable attribute is nil" do
+    #   string = String.build do |str|
+    #     str << "<?xml version=\"1.0\"?>\n"
+    #     str << "<XMLAttrWithQueryAttributes>"
+    #     str << "<is_bar>true</is_bar>"
+    #     str << "</XMLAttrWithQueryAttributes>\n"
+    #   end
+
+    #   error_message = <<-'MSG'
+    #     Missing XML attribute: foo
+    #       parsing XMLAttrWithQueryAttributes at line 1, column 1
+    #     MSG
+    #   ex = expect_raises ::XML::SerializableError, error_message do
+    #     XMLAttrWithQueryAttributes.from_xml(%({"is_bar": true}))
+    #   end
+    #   ex.location.should eq({1, 1})
+    # end
+  end
+
+  describe "BigDecimal" do
+    it "parses xml string with BigDecimal" do
+      string = String.build do |str|
+        str << "<?xml version=\"1.0\"?>\n"
+        str << "<XMLAttrWithBigDecimal>"
+        str << "<value>10.05</value>"
+        str << "</XMLAttrWithBigDecimal>\n"
+      end
+
+      xml = XMLAttrWithBigDecimal.from_xml(string)
+      xml.value.should eq(BigDecimal.new("10.05"))
+    end
+
+    it "parses large xml ints with BigDecimal" do
+      string = String.build do |str|
+        str << "<?xml version=\"1.0\"?>\n"
+        str << "<XMLAttrWithBigDecimal>"
+        str << "<value>9223372036854775808</value>"
+        str << "</XMLAttrWithBigDecimal>\n"
+      end
+
+      xml = XMLAttrWithBigDecimal.from_xml(string)
+      xml.value.should eq(BigDecimal.new("9223372036854775808"))
+    end
+
+    it "parses xml float with BigDecimal" do
+      string = String.build do |str|
+        str << "<?xml version=\"1.0\"?>\n"
+        str << "<XMLAttrWithBigDecimal>"
+        str << "<value>10.05</value>"
+        str << "</XMLAttrWithBigDecimal>\n"
+      end
+
+      xml = XMLAttrWithBigDecimal.from_xml(string)
+      xml.value.should eq(BigDecimal.new("10.05"))
+    end
+
+    it "parses large precision xml floats with BigDecimal" do
+      string = String.build do |str|
+        str << "<?xml version=\"1.0\"?>\n"
+        str << "<XMLAttrWithBigDecimal>"
+        str << "<value>0.00045808999999999997</value>"
+        str << "</XMLAttrWithBigDecimal>\n"
+      end
+
+      xml = XMLAttrWithBigDecimal.from_xml(string)
+      xml.value.should eq(BigDecimal.new("0.00045808999999999997"))
+    end
+  end
+
+  describe "work with module and inheritance" do
+    string = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrModuleTest>"
+      str << "<phoo>20</phoo>"
+      str << "</XMLAttrModuleTest>\n"
+    end
+    string2 = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrModuleTest>"
+      str << "<phoo>20</phoo>"
+      str << "<bar>30</bar>"
+      str << "</XMLAttrModuleTest>\n"
+    end
+    string3 = String.build do |str|
+      str << "<?xml version=\"1.0\"?>\n"
+      str << "<XMLAttrModuleTest>"
+      str << "<bar>30</bar>"
+      str << "<moo>40</moo>"
+      str << "</XMLAttrModuleTest>\n"
+    end
+
+    it { XMLAttrModuleTest.from_xml(string).to_tuple.should eq({10, 20}) }
+    it { XMLAttrModuleTest.from_xml(string).to_tuple.should eq({10, 20}) }
+    it { XMLAttrModuleTest2.from_xml(string2).to_tuple.should eq({10, 20, 30}) }
+    it { XMLAttrModuleTest2.from_xml(string3).to_tuple.should eq({40, 15, 30}) }
+  end
+
+  # it "works together with yaml" do
+  #   person = JSONAttrPersonWithYAML.new("Vasya", 30)
+  #   person.to_json.should eq "{\"name\":\"Vasya\",\"age\":30}"
+  #   person.to_yaml.should eq "---\nname: Vasya\nage: 30\n"
+
+  #   JSONAttrPersonWithYAML.from_json(person.to_json).should eq person
+  #   JSONAttrPersonWithYAML.from_yaml(person.to_yaml).should eq person
+  # end
+
+  # it "yaml and json with after_initialize hook" do
+  #   person = JSONAttrPersonWithYAMLInitializeHook.new("Vasya", 30)
+  #   person.msg.should eq "Hello Vasya"
+
+  #   person.to_json.should eq "{\"name\":\"Vasya\",\"age\":30}"
+  #   person.to_yaml.should eq "---\nname: Vasya\nage: 30\n"
+
+  #   JSONAttrPersonWithYAMLInitializeHook.from_json(person.to_json).msg.should eq "Hello Vasya"
+  #   JSONAttrPersonWithYAMLInitializeHook.from_yaml(person.to_yaml).msg.should eq "Hello Vasya"
+  # end
+
+  # it "json with selective serialization" do
+  #   person = JSONAttrPersonWithSelectiveSerialization.new("Vasya", "P@ssw0rd")
+  #   person.to_json.should eq "{\"name\":\"Vasya\",\"generated\":\"generated-internally\"}"
+
+  #   person_json = "{\"name\":\"Vasya\",\"generated\":\"should not set\",\"password\":\"update\"}"
+  #   person = JSONAttrPersonWithSelectiveSerialization.from_json(person_json)
+  #   person.generated.should eq "generated-internally"
+  #   person.password.should eq "update"
+  # end
+
+  # describe "use_xml_discriminator" do
+  #   it "deserializes with discriminator" do
+  #     string = String.build do |str|
+  #       str << "<?xml version=\"1.0\"?>\n"
+  #       str << "<XMLShape>"
+  #       str << "<type>point</type>"
+  #       str << "<x>1</x>"
+  #       str << "<y>2</y>"
+  #       str << "</XMLShape>\n"
+  #     end
+
+  #     point = XMLShape.from_xml(string).as(XMLPoint)
+  #     point.x.should eq(1)
+  #     point.y.should eq(2)
+
+  #     string2 = String.build do |str|
+  #       str << "<?xml version=\"1.0\"?>\n"
+  #       str << "<XMLShape>"
+  #       str << "<type>circle</type>"
+  #       str << "<x>1</x>"
+  #       str << "<y>2</y>"
+  #       str << "<radius>3</radius>"
+  #       str << "</XMLShape>\n"
+  #     end
+  #     circle = XMLShape.from_xml(string2).as(XMLCircle)
+  #     circle.x.should eq(1)
+  #     circle.y.should eq(2)
+  #     circle.radius.should eq(3)
+  #   end
+
+  #   it "raises if missing discriminator" do
+  #     expect_raises(::JSON::SerializableError, "Missing JSON discriminator field 'type'") do
+  #       JSONShape.from_json("{}")
+  #     end
+  #   end
+
+  #   it "raises if unknown discriminator value" do
+  #     expect_raises(::JSON::SerializableError, %(Unknown 'type' discriminator value: "unknown")) do
+  #       JSONShape.from_json(%({"type": "unknown"}))
+  #     end
+  #   end
+
+  #   it "deserializes with variable discriminator value type" do
+  #     object_number = JSONVariableDiscriminatorValueType.from_json(%({"type": 0}))
+  #     object_number.should be_a(JSONVariableDiscriminatorNumber)
+
+  #     object_string = JSONVariableDiscriminatorValueType.from_json(%({"type": "1"}))
+  #     object_string.should be_a(JSONVariableDiscriminatorString)
+
+  #     object_bool = JSONVariableDiscriminatorValueType.from_json(%({"type": true}))
+  #     object_bool.should be_a(JSONVariableDiscriminatorBool)
+
+  #     object_enum = JSONVariableDiscriminatorValueType.from_json(%({"type": 4}))
+  #     object_enum.should be_a(JSONVariableDiscriminatorEnum)
+
+  #     object_enum = JSONVariableDiscriminatorValueType.from_json(%({"type": 18}))
+  #     object_enum.should be_a(JSONVariableDiscriminatorEnum8)
+  #   end
+  # end
+
+  # describe "namespaced classes" do
+  #   it "lets default values use the object's own namespace" do
+  #     string = String.build do |str|
+  #       str << "<?xml version=\"1.0\"?>\n"
+  #       str << "<XMLNamespace::FooRequest>"
+  #       str << "<foo/>"
+  #       str << "</XMLNamespace::FooRequest>\n"
+  #     end
+
+  #     request = XMLNamespace::FooRequest.from_xml(%({"foo":{}}))
+  #     request.foo.id.should eq "id:foo"
+  #     request.bar.id.should eq "id:bar"
+  #   end
+  # end
 end
