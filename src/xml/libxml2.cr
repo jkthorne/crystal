@@ -117,6 +117,8 @@ lib LibXML
   fun xmlTextReaderReadOuterXml(reader : XMLTextReader) : UInt8*
   fun xmlTextReaderExpand(reader : XMLTextReader) : Node*
   fun xmlTextReaderCurrentNode(reader : XMLTextReader) : Node*
+  fun xmlTextReaderGetParserColumnNumber(reader : XMLTextReader) : Int
+  fun xmlTextReaderGetParserLineNumber(reader : XMLTextReader) : Int
 
   fun xmlTextReaderSetErrorHandler(reader : XMLTextReader, f : TextReaderErrorFunc) : Void
 

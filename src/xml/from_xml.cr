@@ -1,13 +1,13 @@
 require "uuid"
 
-def Object.from_xml(string_or_io)
-  new XML.parse(string_or_io)
+def Object.from_xml(string : String)
+  new XML::Reader.new(string)
 end
 
-def Array.from_xml(string_or_io) : Nil
-  parser = XML.parse(string_or_io)
-  new(parser) do |node|
-    yield node
+def Array.from_xml(stirng : String) : Nil
+  parser = XML::Reader.new(string)
+  new(parser) do |reader|
+    yield reader
   end
   nil
 end
@@ -173,8 +173,8 @@ def Array.new(node : XML::Node)
   end
 end
 
-def String.new(node : XML::Node)
-  node.content
+def String.new(reader : XML::Reader)
+  reader.value
 end
 
 def Object.from_xml(string_or_io, root : String)

@@ -18,25 +18,25 @@ module XML
     end
 
     macro included
-      def self.new(node : ::XML::Node)
-        new_from_xml_node(node)
+      def self.new(reader : ::XML::Reader)
+        new_from_xml_node(reader)
       end
 
-      private def self.new_from_xml_node(node : ::XML::Node)
+      private def self.new_from_xml_node(reader : ::XML::Reader)
         instance = allocate
-        instance.initialize(__for_xml_serializable: node)
+        instance.initialize(__for_xml_serializable: reader)
         GC.add_finalizer(instance) if instance.responds_to?(:finalize)
         instance
       end
 
       macro inherited
-        def self.new(node : ::XML::Node)
-          new_from_xml_node(node)
+        def self.new(reader : ::XML::Reader)
+          new_from_xml_node(reader)
         end
       end
     end
 
-    def initialize(*, __for_xml_serializable node : ::XML::Node)
+    def initialize(*, __for_xml_serializable reader : ::XML::Reader)
       {% begin %}
         {% properties = {} of Nil => Nil %}
         {% for ivar in @type.instance_vars %}
@@ -62,26 +62,20 @@ module XML
             %found{name} = false
           {% end %}
 
-          # TODO: add location
           begin
-            if node.document?
-              root = node.root
-              if root.nil?
-                raise ::XML::SerializableError.new("Missing XML root document", self.class.to_s, nil, 0)
-              else
-                children = root.children
+            if reader.name == self.class.to_s
+              check_subtree = reader.read # NOTE: read next element
+              if check_subtree == false || reader.empty_element?
+                raise ::XML::SerializableError.new("Cannot find XML for class", self.class.to_s, nil, 0)
               end
-            else
-              children = node.children
             end
           rescue exc : ::XML::Error
             raise ::XML::SerializableError.new(exc.message, self.class.to_s, nil, exc.line_number)
           end
 
-          children.each do |child|
-            next unless child.element?
-
-            case child.name
+          while reader.read
+            name = reader.name
+            case name
             {% for name, value in properties %}
               when {{value[:key]}}
                 %found{name} = true
@@ -91,9 +85,9 @@ module XML
                 {% end %}
 
                 {% if value[:converter] %}
-                  %var{name} = {{value[:converter]}}.from_xml(child)
+                  %var{name} = {{value[:converter]}}.from_xml(reader)
                 {% else %}
-                  %var{name} = ::Union({{value[:type]}}).new(child)
+                  %var{name} = ::Union({{value[:type]}}).new(reader)
                 {% end %}
 
                 rescue exc : ::XML::Error
@@ -101,7 +95,7 @@ module XML
                 end
             {% end %}
             else
-              on_unknown_xml_attribute(child, child.name)
+              on_unknown_xml_attribute(reader, name)
             end
           end
 
