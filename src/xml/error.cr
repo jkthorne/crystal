@@ -1,13 +1,14 @@
 require "./libxml2"
 
 class XML::Error < Exception
-  getter line_number : Int32
+  getter line_number : Int32 = 0
+  getter column_number : Int32 = 0
 
   def self.new(error : LibXML::Error*)
     new String.new(error.value.message).chomp, error.value.line
   end
 
-  def initialize(message, @line_number)
+  def initialize(message, @line_number = 0, @column_number = 0)
     super(message)
   end
 

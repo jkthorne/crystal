@@ -166,11 +166,11 @@ class XML::Reader
     value ? String.new(value) : ""
   end
 
-  def column_number
+  def column_number : Int32
     LibXML.xmlTextReaderGetParserColumnNumber(@reader)
   end
 
-  def line_number
+  def line_number : Int32
     LibXML.xmlTextReaderGetParserLineNumber(@reader)
   end
 

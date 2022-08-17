@@ -40,6 +40,7 @@ module XML
       {% begin %}
         {% properties = {} of Nil => Nil %}
         {% for ivar in @type.instance_vars %}
+          # TODO: handle Attribute
           {% ann = ivar.annotation(::XML::Element) %}
           {% unless ann && (ann[:ignore] || ann[:ignore_deserialize]) %}
             {%
@@ -52,77 +53,95 @@ module XML
                 root:        ann && ann[:root],
                 converter:   ann && ann[:converter],
                 presence:    ann && ann[:presence],
-
               }
             %}
           {% end %}
+        {% end %}
 
+        {% for name, value in properties %}
+          %var{name} = nil
+          %found{name} = false
+        {% end %}
+
+        begin
+          reader.next if reader.node_type.none? # NOTE: for first read of document
+
+          if reader.name == self.class.to_s
+            check_subtree = reader.read # NOTE: read next element
+
+            if check_subtree == false
+              raise ::XML::SerializableError.new(
+                "Cannot find XML for class",
+                self.class.to_s,
+                nil,
+                reader.line_number,
+                reader.column_number
+              )
+            end
+          end
+        rescue exc : ::XML::Error
+          raise ::XML::SerializableError.new(
+            exc.message,
+            self.class.to_s,
+            nil,
+            exc.line_number,
+            exc.column_number
+          )
+        end
+
+        el_name = reader.name
+        until reader.name.blank? || reader.name == self.class.to_s
+          %location = {reader.line_number, reader.column_number}
+
+          case el_name
           {% for name, value in properties %}
-            %var{name} = nil
-            %found{name} = false
+            when {{value[:key]}}
+              %found{name} = true
+              puts "EL_NAME(FOUND): #{el_name} => #{reader.read_inner_xml}"
+
+              begin
+              {% if value[:converter] %}
+                %var{name} = {{value[:converter]}}.from_xml(reader)
+              {% else %}
+                %var{name} = ::Union({{value[:type]}}).new(reader)
+              {% end %}
+
+              rescue exc : ::XML::Error
+                raise ::XML::SerializableError.new(exc.message, self.class.to_s, {{value[:key]}}, exc.line_number)
+              end
+          {% end %}
+          else
+            puts("UNKNOWN ATTRIBUTE: #{el_name}")
+            on_unknown_xml_attribute(reader, el_name)
+          end
+
+          reader.next
+          el_name = reader.name
+        end
+
+        {% for name, value in properties %}
+          {% unless value[:nilable] || value[:has_default] %}
+            if %var{name}.nil? && !%found{name} && !::Union({{value[:type]}}).nilable?
+              raise ::XML::SerializableError.new("Missing XML node: {{value[:key].id}}", self.class.to_s, nil, 0)
+            end
           {% end %}
 
-          begin
-            if reader.name == self.class.to_s
-              check_subtree = reader.read # NOTE: read next element
-              if check_subtree == false || reader.empty_element?
-                raise ::XML::SerializableError.new("Cannot find XML for class", self.class.to_s, nil, 0)
-              end
-            end
-          rescue exc : ::XML::Error
-            raise ::XML::SerializableError.new(exc.message, self.class.to_s, nil, exc.line_number)
-          end
-
-          while reader.read
-            name = reader.name
-            case name
-            {% for name, value in properties %}
-              when {{value[:key]}}
-                %found{name} = true
-
-                begin
-                {% if value[:nilable] || value[:has_default] %}
-                {% end %}
-
-                {% if value[:converter] %}
-                  %var{name} = {{value[:converter]}}.from_xml(reader)
-                {% else %}
-                  %var{name} = ::Union({{value[:type]}}).new(reader)
-                {% end %}
-
-                rescue exc : ::XML::Error
-                  raise ::XML::SerializableError.new(exc.message, self.class.to_s, {{value[:key]}}, exc.line_number)
-                end
-            {% end %}
-            else
-              on_unknown_xml_attribute(reader, name)
-            end
-          end
-
-          {% for name, value in properties %}
-            {% unless value[:nilable] || value[:has_default] %}
-              if %var{name}.nil? && !%found{name} && !::Union({{value[:type]}}).nilable?
-                raise ::XML::SerializableError.new("Missing XML node: {{value[:key].id}}", self.class.to_s, nil, 0)
-              end
-            {% end %}
-
-            {% if value[:nilable] %}
-              {% if value[:has_default].nil? %}
-                @{{name}} = %var{name}
-              {% else %}
-                @{{name}} = %found{name} ? %var{name} : {{value[:default]}}
-              {% end %}
-            {% elsif value[:has_default] %}
-              if %found{name} && !%var{name}.nil?
-                @{{name}} = %var{name}
-              end
+          {% if value[:nilable] %}
+            {% if value[:has_default].nil? %}
+              @{{name}} = %var{name}
             {% else %}
-              @{{name}} = %var{name}.as({{value[:type]}})
+              @{{name}} = %found{name} ? %var{name} : {{value[:default]}}
             {% end %}
+          {% elsif value[:has_default] %}
+            if %found{name} && !%var{name}.nil?
+              @{{name}} = %var{name}
+            end
+          {% else %}
+            @{{name}} = %var{name}.as({{value[:type]}})
+          {% end %}
 
-            {% if value[:presence] %}
-              @{{name}}_present = %found{name}
-            {% end %}
+          {% if value[:presence] %}
+            @{{name}}_present = %found{name}
           {% end %}
         {% end %}
       {% end %}
@@ -336,7 +355,13 @@ module XML
     getter klass : String
     getter attribute : String?
 
-    def initialize(message : String?, @klass : String, @attribute : String?, line_number : Int32)
+    def initialize(
+      message : String?,
+      @klass : String,
+      @attribute : String?,
+      line_number : Int32 = 0,
+      column_number : Int32 = 0
+    )
       message = String.build do |io|
         io << message
         io << "\n  parsing "

@@ -33,11 +33,29 @@ def Bool.new(node : XML::Node)
   end
 end
 
-def Union.new(node : XML::Node)
+def Union.new(reader : XML::Reader)
+  location = {reader.line_number, reader.column_number}
+
+  value = nil
+  loop do
+    case reader.node_type
+    when .text? # TODO: get value
+      print "TEXT"
+      p reader.value
+      value = reader.value
+      break
+    when .end_element? # NOTE: possibly empty?
+      break
+    when .none? # NOTE: possibly empty?
+      break
+    end
+    reader.read
+  end
+
   {% begin %}
-    case content = node.content
+    case value
     {% if T.includes? Nil %}
-    when .blank?
+    when .nil?
       return nil
     {% end %}
     {% if T.includes? Bool %}
@@ -63,11 +81,11 @@ def Union.new(node : XML::Node)
     {% type_order = [Int64, UInt64, Int32, UInt32, Int16, UInt16, Int8, UInt8, Float64, Float32] %}
     {% for type in type_order.select { |t| T.includes? t } %}
       when .to_{{numeral_methods[type].id}}?
-        return content.not_nil!.to_{{numeral_methods[type].id}}
+        return reader.value.not_nil!.to_{{numeral_methods[type].id}}
     {% end %}
     {% if T.includes? String %}
     else
-      return node.content
+      return reader.value
     {% else %}
     else
       # no priority type
@@ -84,7 +102,7 @@ def Union.new(node : XML::Node)
     {% if non_primitives.size == 1 %}
       return {{non_primitives[0]}}.new(node)
     {% else %}
-      string = node.content
+      string = reader.value
       {% for type in non_primitives %}
         begin
           return {{type}}.from_xml(string)
@@ -92,7 +110,7 @@ def Union.new(node : XML::Node)
           # Ignore
         end
       {% end %}
-      raise XML::Error.new("Couldn't parse #{self} from #{string}", 0)
+      raise XML::Error.new("Couldn't parse #{self} from #{string}", *location)
     {% end %}
   {% end %}
 end
