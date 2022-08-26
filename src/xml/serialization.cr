@@ -18,25 +18,25 @@ module XML
     end
 
     macro included
-      def self.new(reader : ::XML::Reader)
-        new_from_xml_node(reader)
+      def self.new(parser : ::XML::PullParser)
+        new_from_xml_node(parser)
       end
 
-      private def self.new_from_xml_node(reader : ::XML::Reader)
+      private def self.new_from_xml_node(parser : ::XML::PullParser)
         instance = allocate
-        instance.initialize(__for_xml_serializable: reader)
+        instance.initialize(__for_xml_serializable: parser)
         GC.add_finalizer(instance) if instance.responds_to?(:finalize)
         instance
       end
 
       macro inherited
-        def self.new(reader : ::XML::Reader)
-          new_from_xml_node(reader)
+        def self.new(parser : ::XML::PullParser)
+          new_from_xml_node(parser)
         end
       end
     end
 
-    def initialize(*, __for_xml_serializable reader : ::XML::Reader)
+    def initialize(*, __for_xml_serializable parser : ::XML::PullParser)
       {% begin %}
         {% properties = {} of Nil => Nil %}
         {% for ivar in @type.instance_vars %}
@@ -63,47 +63,20 @@ module XML
           %found{name} = false
         {% end %}
 
-        begin
-          reader.next if reader.node_type.none? # NOTE: for first read of document
-
-          if reader.name == self.class.to_s
-            check_subtree = reader.read # NOTE: read next element
-
-            if check_subtree == false
-              raise ::XML::SerializableError.new(
-                "Cannot find XML for class",
-                self.class.to_s,
-                nil,
-                reader.line_number,
-                reader.column_number
-              )
-            end
-          end
-        rescue exc : ::XML::Error
-          raise ::XML::SerializableError.new(
-            exc.message,
-            self.class.to_s,
-            nil,
-            exc.line_number,
-            exc.column_number
-          )
-        end
-
-        el_name = reader.name
-        until reader.name.blank? || reader.name == self.class.to_s
-          %location = {reader.line_number, reader.column_number}
+        el_name = parser.name
+        while parser.readable?
+          %location = {parser.line_number, parser.column_number}
 
           case el_name
           {% for name, value in properties %}
             when {{value[:key]}}
               %found{name} = true
-              puts "EL_NAME(FOUND): #{el_name} => #{reader.read_inner_xml}"
 
               begin
               {% if value[:converter] %}
-                %var{name} = {{value[:converter]}}.from_xml(reader)
+                %var{name} = {{value[:converter]}}.from_xml(parser)
               {% else %}
-                %var{name} = ::Union({{value[:type]}}).new(reader)
+                %var{name} = ::Union({{value[:type]}}).new(parser)
               {% end %}
 
               rescue exc : ::XML::Error
@@ -111,12 +84,10 @@ module XML
               end
           {% end %}
           else
-            puts("UNKNOWN ATTRIBUTE: #{el_name}")
-            on_unknown_xml_attribute(reader, el_name)
+            on_unknown_xml_attribute(parser, el_name)
           end
 
-          reader.next
-          el_name = reader.name
+          el_name = parser.read_name
         end
 
         {% for name, value in properties %}

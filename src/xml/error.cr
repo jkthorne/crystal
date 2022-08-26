@@ -8,8 +8,8 @@ class XML::Error < Exception
     new String.new(error.value.message).chomp, error.value.line
   end
 
-  def initialize(message, @line_number = 0, @column_number = 0)
-    super(message)
+  def initialize(message, @line_number = 0, @column_number = 0, cause = nil)
+    super(message, cause)
   end
 
   # TODO: this logic isn't thread/fiber safe, but error checking is less needed than
