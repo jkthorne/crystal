@@ -1,4 +1,9 @@
-require "xml"
+require "./src/xml"
+
+x = 1
+y = 2
+
+puts "hello world"
 
 text = <<-XML
 <?xml version="1.0"?>
@@ -8,10 +13,9 @@ text = <<-XML
 </XMLAttrPerson>
 XML
 
-xml = XML::Reader.new(text)
-
-p xml.next
-p xml.expand
-p xml.next
-p xml.next
-p xml.next
+parser = XML::PullParser.new(text)
+p parser.raw_value
+p parser.string_value
+parser.read_raw
+p parser.raw_value
+p parser.int_value

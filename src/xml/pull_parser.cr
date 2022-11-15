@@ -2,131 +2,128 @@ require "./libxml2"
 
 module XML
   class PullParser
-    @reader : Reader
-    @current_name : String
-    @readable : Bool
+    enum Kind
+      Null
+      Bool
+      Int
+      Float
+      String
+      EOF
+    end
 
-    delegate line_number, to: @reader
-    delegate column_number, to: @reader
+    delegate token, to: @lexer
+    delegate location, to: @lexer
+    delegate readable, to: @lexer
+    delegate raw_value, to: token
+
+    getter string_value : String
 
     def initialize(input)
-      @reader = Reader.new input
-      current_name = nil
-      @readable = true
+      @lexer = Lexer.new(input)
+      @bool_value = false
+      @string_value = ""
 
-      loop do
-        case @reader.node_type
-        when .element?
-          current_name = @reader.name
-          break
-        end
-        @readable = @reader.read
-      end
-
-      if current_name.nil?
-        raise ParseException.new("Tag name not found", @reader.line_number, @reader.column_number)
-      else
-        @current_name = current_name
-      end
-    end
-
-    def location
-      {line_number, column_number}
-    end
-
-    def readable?
-      @readable
-    end
-
-    def name
-      @current_name
-    end
-
-    def read_name : String
-      @readable = @reader.read
-      loop do
-        case @reader.node_type
-        when .element?
-          @current_name = @reader.name
-          break
-        when .end_element?
-          @current_name = @reader.name
-          @readable = @reader.read
-          break
-        when .none?
-          break
-        end
-        @readable = @reader.read
-      end
-      @readable = @reader.read
-
-      if @current_name.nil?
-        raise ParseException.new("Tag name not found", @reader.line_number, @reader.column_number)
-      else
-        @current_name
+      next_token
+      case token.kind
+      in .null?
+        @kind = Kind::Null
+      in .false?
+        @kind = Kind::Bool
+        @bool_value = false
+      in .true?
+        @kind = Kind::Bool
+        @bool_value = true
+      in .int?
+        @kind = Kind::Int
+      in .float?
+        @kind = Kind::Float
+      in .string?
+        @kind = Kind::String
+        @string_value = token.string_value
+      in .eof?
+        @kind = Kind::EOF
       end
     end
 
-    def read_raw : String
-      value = ""
-
-      loop do
-        case @reader.node_type
-        when .text?
-          value = @reader.value
-          break
-        when .end_element?
-          @readable = @reader.read
-          break
-        when .none?
-          break
-        end
-        @readable = @reader.read
-      end
-      @readable = @reader.read
-
-      value
+    def int_value
+      token.int_value
     end
 
-    def read_string : String
-      value = read_raw
+    def float_value
+      token.float_value
+    end
 
-      if value.nil?
-        raise ParseException.new("String value not found", @reader.line_number, @reader.column_number)
-      else
-        value
-      end
+    def read_null : Nil
+      expect_kind Kind::Null
+      read_next
+      nil
     end
 
     def read_int : Int64
-      value = read_raw
-
-      if value.nil?
-        raise ParseException.new("String value not found", @reader.line_number, @reader.column_number)
-      else
-        value.to_i64
-      end
+      expect_kind Kind::Int
+      int_value.tap { read_next }
     end
 
     def read_bool : Bool
-      value = read_raw
+      expect_kind Kind::Bool
+      @bool_value.tap { read_next }
+    end
 
-      case value
-      when "t", "true"
-        true
-      when "f", "false"
-        false
+    def read_int : Int64
+      expect_kind Kind::Int
+      int_value.tap { read_next }
+    end
+
+    def read_float : Float64
+      case @kind
+      when .int?
+        int_value.to_f.tap { read_next }
+      when .float?
+        float_value.tap { read_next }
       else
-        raise XML::SerializableError.new(
-          "failed to parse bool",
-          Bool.name,
-          nil,
-          Int32::MIN
-        )
+        raise "expecting int or float but was #{@kind}"
       end
     end
 
-    def read_array
+    def read_string : String
+      expect_kind Kind::String
+      @string_value.tap { read_next }
+    end
+
+    def read_raw : String
+      case @kind
+      when .null?
+        read_next
+        "null"
+      when .bool?
+        @bool_value.to_s.tap { read_next }
+      when .int?, .float?
+        read_next
+        raw_value
+      when .string?
+        @string_value.tap { read_next }
+      else
+        unexpected_token
+      end
+    end
+
+    private def next_token
+      @location = {@lexer.token.line_number, @lexer.token.column_number}
+      @lexer.next_token
+      token
+    end
+
+    def read_next
+      next_token
+      @kind
+    end
+
+    private def expect_kind(kind : Kind)
+      raise "Expected #{kind} but was #{@kind}" unless @kind == kind
+    end
+
+    private def unexpected_token
+      raise "Unexpected token: #{token}"
     end
   end
 
