@@ -52,19 +52,36 @@ let
   # Hashes obtained using `nix-prefetch-url --unpack <url>`
   latestCrystalBinary = genericBinary ({
     x86_64-darwin = {
-      url = "https://github.com/crystal-lang/crystal/releases/download/1.6.1/crystal-1.6.1-1-darwin-universal.tar.gz";
-      sha256 = "sha256:0pnakhi4hc50fw6dz0n110zpibgwjb91mf6n63fhys8hby7fg73p";
+      url = "https://github.com/crystal-lang/crystal/releases/download/1.7.3/crystal-1.7.3-1-darwin-universal.tar.gz";
+      sha256 = "sha256:1jc3fdc36mpvh7zahszbij02c0nxhmmbpfjcpd890bapj2q4jkkr";
+    };
+
+    aarch64-darwin = {
+      url = "https://github.com/crystal-lang/crystal/releases/download/1.7.3/crystal-1.7.3-1-darwin-universal.tar.gz";
+      sha256 = "sha256:1jc3fdc36mpvh7zahszbij02c0nxhmmbpfjcpd890bapj2q4jkkr";
     };
 
     x86_64-linux = {
-      url = "https://github.com/crystal-lang/crystal/releases/download/1.6.1/crystal-1.6.1-1-linux-x86_64.tar.gz";
-      sha256 = "sha256:00ckw3nlr800i25mwv4qwz1lv42qq1kp3xsaxbd3l40ck5gml7c3";
+      url = "https://github.com/crystal-lang/crystal/releases/download/1.7.3/crystal-1.7.3-1-linux-x86_64.tar.gz";
+      sha256 = "sha256:0diq6i760yd0rv310f80v60m015f5xkni7h60phspvmyy0yw9jv0";
     };
   }.${pkgs.stdenv.system});
 
   pkgconfig = pkgs.pkgconfig;
 
   llvm_suite = ({
+    llvm_14 = {
+      llvm = pkgs.llvm_14;
+      extra = [ pkgs.lld_14 ]; # lldb marked as broken
+    };
+    llvm_13 = {
+      llvm = pkgs.llvm_13;
+      extra = [ pkgs.lld_13 ]; # lldb marked as broken
+    };
+    llvm_12 = {
+      llvm = pkgs.llvm_12;
+      extra = [ pkgs.lld_12 pkgs.lldb_12 ];
+    };
     llvm_11 = {
       llvm = pkgs.llvm_11;
       extra = [ pkgs.lld_11 pkgs.lldb_11 ];
@@ -75,19 +92,19 @@ let
     };
     llvm_9 = {
       llvm = pkgs.llvm_9;
-      extra = [ ]; # lldb it fails to compile on Darwin
+      extra = [ pkgs.lld_9 ]; # lldb marked as broken
     };
     llvm_8 = {
       llvm = pkgs.llvm_8;
-      extra = [ ]; # lldb it fails to compile on Darwin
+      extra = [ pkgs.lld_8 ]; # lldb marked as broken
     };
     llvm_7 = {
-      llvm = pkgs.llvm;
-      extra = [ pkgs.lldb ];
+      llvm = pkgs.llvm_7;
+      extra = [ pkgs.lld_7 ]; # lldb it fails to compile on Darwin
     };
     llvm_6 = {
       llvm = pkgs.llvm_6;
-      extra = [ ]; # lldb it fails to compile on Darwin
+      extra = [ pkgs.lld_6 ]; # lldb it fails to compile on Darwin
     };
   }."llvm_${toString llvm}");
 
@@ -111,7 +128,7 @@ let
   };
 
   stdLibDeps = with pkgs; [
-      boehmgc gmp libevent libiconv libxml2 libyaml openssl pcre zlib
+      boehmgc gmp libevent libiconv libxml2 libyaml openssl pcre2 zlib
     ] ++ lib.optionals stdenv.isDarwin [ libiconv ];
 
   tools = [ pkgs.hostname pkgs.git llvm_suite.extra ];

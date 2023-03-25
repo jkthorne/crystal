@@ -203,9 +203,10 @@ describe "String" do
     end
   end
 
-  describe "byte_slice" do
+  describe "#byte_slice" do
     it "gets byte_slice" do
       "hello".byte_slice(1, 3).should eq("ell")
+      "hello".byte_slice(1..3).should eq("ell")
     end
 
     it "gets byte_slice with negative count" do
@@ -224,14 +225,19 @@ describe "String" do
       expect_raises(IndexError) do
         "hello".byte_slice(10, 3)
       end
+      expect_raises(IndexError) do
+        "hello".byte_slice(10..13)
+      end
     end
 
     it "gets byte_slice with large count" do
       "hello".byte_slice(1, 10).should eq("ello")
+      "hello".byte_slice(1..10).should eq("ello")
     end
 
     it "gets byte_slice with negative index" do
       "hello".byte_slice(-2, 3).should eq("lo")
+      "hello".byte_slice(-2..-1).should eq("lo")
     end
 
     it "gets byte_slice(Int) with start out of bounds" do
@@ -241,6 +247,45 @@ describe "String" do
       expect_raises(IndexError) do
         "hello".byte_slice(-10)
       end
+    end
+  end
+
+  describe "#byte_slice?" do
+    it "gets byte_slice" do
+      "hello".byte_slice?(1, 3).should eq("ell")
+      "hello".byte_slice?(1..3).should eq("ell")
+    end
+
+    it "gets byte_slice with negative count" do
+      expect_raises(ArgumentError) do
+        "hello".byte_slice?(1, -10)
+      end
+    end
+
+    it "gets byte_slice with negative count at last" do
+      expect_raises(ArgumentError) do
+        "hello".byte_slice?(5, -1)
+      end
+    end
+
+    it "gets byte_slice with start out of bounds" do
+      "hello".byte_slice?(10, 3).should be_nil
+      "hello".byte_slice?(10..13).should be_nil
+    end
+
+    it "gets byte_slice with large count" do
+      "hello".byte_slice?(1, 10).should eq("ello")
+      "hello".byte_slice?(1..11).should eq("ello")
+    end
+
+    it "gets byte_slice with negative index" do
+      "hello".byte_slice?(-2, 3).should eq("lo")
+      "hello".byte_slice?(-2..-1).should eq("lo")
+    end
+
+    it "gets byte_slice(Int) with start out of bounds" do
+      "hello".byte_slice?(10).should be_nil
+      "hello".byte_slice?(-10).should be_nil
     end
   end
 
@@ -967,6 +1012,78 @@ describe "String" do
     end
   end
 
+  describe "#index!" do
+    describe "by char" do
+      it { "foo".index!('o').should eq(1) }
+      it do
+        expect_raises(Enumerable::NotFoundError) do
+          "foo".index!('g')
+        end
+      end
+
+      describe "with offset" do
+        it { "foobarbaz".index!('a', 5).should eq(7) }
+        it { "foobarbaz".index!('a', -4).should eq(7) }
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "foo".index!('f', 1)
+          end
+        end
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "foo".index!('g', -20)
+          end
+        end
+      end
+    end
+
+    describe "by string" do
+      it { "foo bar".index!("o b").should eq(2) }
+      it { "foo".index!("").should eq(0) }
+      it { "foo".index!("foo").should eq(0) }
+      it do
+        expect_raises(Enumerable::NotFoundError) do
+          "foo".index!("fg")
+        end
+      end
+
+      describe "with offset" do
+        it { "foobarbaz".index!("ba", 4).should eq(6) }
+        it { "foobarbaz".index!("ba", -5).should eq(6) }
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "foo".index!("ba", 1)
+          end
+        end
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "foo".index!("ba", -20)
+          end
+        end
+      end
+    end
+
+    describe "by regex" do
+      it { "string 12345".index!(/\d+/).should eq(7) }
+      it { "12345".index!(/\d/).should eq(0) }
+      it do
+        expect_raises(Enumerable::NotFoundError) do
+          "Hello, world!".index!(/\d/)
+        end
+      end
+
+      describe "with offset" do
+        it { "abcDef".index!(/[A-Z]/).should eq(3) }
+        it { "foobarbaz".index!(/ba/, -5).should eq(6) }
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "Foo".index!(/[A-Z]/, 1)
+          end
+        end
+      end
+    end
+  end
+
   describe "#rindex" do
     describe "by char" do
       it { "bbbb".rindex('b').should eq(3) }
@@ -1043,6 +1160,70 @@ describe "String" do
         it { "bbbb".rindex(/b/, -5).should be_nil }
         it { "bbbb".rindex(/b/, -4).should eq(0) }
         it { "日本語日本語".rindex(/日本/, 2).should eq(0) }
+      end
+    end
+  end
+
+  describe "#rindex!" do
+    describe "by char" do
+      it { "bbbb".rindex!('b').should eq(3) }
+      it { "foobar".rindex!('a').should eq(4) }
+      it do
+        expect_raises(Enumerable::NotFoundError) do
+          "foobar".rindex!('g')
+        end
+      end
+
+      describe "with offset" do
+        it { "bbbb".rindex!('b', 2).should eq(2) }
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "abbbb".rindex!('b', 0)
+          end
+        end
+      end
+    end
+
+    describe "by string" do
+      it { "bbbb".rindex!("b").should eq(3) }
+      it { "foo baro baz".rindex!("o b").should eq(7) }
+      it do
+        expect_raises(Enumerable::NotFoundError) do
+          "foo baro baz".rindex!("fg")
+        end
+      end
+
+      describe "with offset" do
+        it { "bbbb".rindex!("b", 2).should eq(2) }
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "abbbb".rindex!("b", 0)
+          end
+        end
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "bbbb".rindex!("b", -5)
+          end
+        end
+      end
+    end
+
+    describe "by regex" do
+      it { "bbbb".rindex!(/b/).should eq(3) }
+      it { "a43b53".rindex!(/\d+/).should eq(4) }
+      it do
+        expect_raises(Enumerable::NotFoundError) do
+          "bbbb".rindex!(/\d/)
+        end
+      end
+
+      describe "with offset" do
+        it { "bbbb".rindex!(/b/, 2).should eq(2) }
+        it do
+          expect_raises(Enumerable::NotFoundError) do
+            "abbbb".rindex!(/b/, 0)
+          end
+        end
       end
     end
   end

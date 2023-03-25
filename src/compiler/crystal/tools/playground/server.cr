@@ -22,7 +22,7 @@ module Crystal::Playground
       instrumented = Playground::AgentInstrumentorTransformer.transform(ast).to_s
       Log.info { "Code instrumentation (session=#{session_key}, tag=#{tag}).\n#{instrumented}" }
 
-      prelude = %(
+      prelude = <<-CRYSTAL
         require "compiler/crystal/tools/playground/agent"
 
         class Crystal::Playground::Agent
@@ -36,7 +36,7 @@ module Crystal::Playground
         def _p
           Crystal::Playground::Agent.instance
         end
-        )
+        CRYSTAL
 
       [
         Compiler::Source.new("playground_prelude", prelude),
@@ -124,7 +124,7 @@ module Crystal::Playground
       Log.warn { "Unable to send message (session=#{@session_key})." }
     end
 
-    def send_with_json_builder
+    def send_with_json_builder(&)
       send(JSON.build do |json|
         json.object do
           yield json
@@ -172,12 +172,11 @@ module Crystal::Playground
       spawn do
         status = process.wait
         Log.info { "Code execution ended (session=#{@session_key}, tag=#{tag}, filename=#{output_filename})." }
-        exit_status = status.normal_exit? ? status.exit_code : status.exit_signal.value
 
         send_with_json_builder do |json|
           json.field "type", "exit"
           json.field "tag", tag
-          json.field "status", exit_status
+          json.field "status", status.to_s
         end
       end
 
@@ -390,7 +389,7 @@ module Crystal::Playground
   class EnvironmentHandler
     include HTTP::Handler
 
-    DEFAULT_SOURCE = <<-CR
+    DEFAULT_SOURCE = <<-CRYSTAL
       def find_string(text, word)
         (0..text.size-word.size).each do |i|
           { i, text[i..i+word.size-1] }
@@ -404,7 +403,7 @@ module Crystal::Playground
 
       find_string "Crystal is awesome!", "awesome"
       find_string "Crystal is awesome!", "not sure"
-      CR
+      CRYSTAL
 
     def initialize(@server : Playground::Server)
     end

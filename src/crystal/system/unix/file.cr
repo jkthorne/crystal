@@ -3,32 +3,25 @@ require "file/error"
 
 # :nodoc:
 module Crystal::System::File
-  def self.open(filename, mode, perm)
-    oflag = open_flag(mode) | LibC::O_CLOEXEC
+  def self.open(filename : String, mode : String, perm : Int32 | ::File::Permissions)
+    perm = ::File::Permissions.new(perm) if perm.is_a? Int32
 
-    fd = LibC.open(filename.check_no_null_byte, oflag, perm)
-    if fd < 0
-      raise ::File::Error.from_errno("Error opening file with mode '#{mode}'", file: filename)
+    fd, errno = open(filename, open_flag(mode), perm)
+
+    unless errno.none?
+      raise ::File::Error.from_os_error("Error opening file with mode '#{mode}'", errno, file: filename)
     end
+
     fd
   end
 
-  def self.mktemp(prefix, suffix, dir) : {LibC::Int, String}
-    prefix.try &.check_no_null_byte
-    suffix.try &.check_no_null_byte
-    dir.check_no_null_byte
+  def self.open(filename : String, flags : Int32, perm : ::File::Permissions) : {LibC::Int, Errno}
+    filename.check_no_null_byte
+    flags |= LibC::O_CLOEXEC
 
-    dir = dir + ::File::SEPARATOR
-    path = "#{dir}#{prefix}.XXXXXX#{suffix}"
+    fd = LibC.open(filename, flags, perm)
 
-    if suffix
-      fd = LibC.mkstemps(path, suffix.bytesize)
-    else
-      fd = LibC.mkstemp(path)
-    end
-
-    raise ::File::Error.from_errno("Error creating temporary file", file: path) if fd == -1
-    {fd, path}
+    {fd, fd < 0 ? Errno.value : Errno::NONE}
   end
 
   def self.info?(path : String, follow_symlinks : Bool) : ::File::Info?
@@ -252,14 +245,29 @@ module Crystal::System::File
     flock LibC::FlockOp::UN
   end
 
-  private def flock(op : LibC::FlockOp, blocking : Bool = true)
-    op |= LibC::FlockOp::NB unless blocking
+  private def flock(op : LibC::FlockOp, retry : Bool) : Nil
+    op |= LibC::FlockOp::NB
 
-    if LibC.flock(fd, op) != 0
-      raise IO::Error.from_errno("Error applying or removing file lock")
+    if retry
+      until flock(op)
+        sleep 0.1
+      end
+    else
+      flock(op) || raise IO::Error.from_errno("Error applying file lock: file is already locked")
     end
+  end
 
-    nil
+  private def flock(op) : Bool
+    if 0 == LibC.flock(fd, op)
+      true
+    else
+      errno = Errno.value
+      if errno.in?(Errno::EAGAIN, Errno::EWOULDBLOCK)
+        false
+      else
+        raise IO::Error.from_os_error("Error applying or removing file lock", errno)
+      end
+    end
   end
 
   private def system_fsync(flush_metadata = true) : Nil

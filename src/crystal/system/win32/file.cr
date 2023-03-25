@@ -9,8 +9,6 @@ require "c/handleapi"
 module Crystal::System::File
   def self.open(filename : String, mode : String, perm : Int32 | ::File::Permissions) : LibC::Int
     perm = ::File::Permissions.new(perm) if perm.is_a? Int32
-    oflag = open_flag(mode) | LibC::O_BINARY | LibC::O_NOINHERIT
-
     # Only the owner writable bit is used, since windows only supports
     # the read only attribute.
     if perm.owner_write?
@@ -19,24 +17,94 @@ module Crystal::System::File
       perm = LibC::S_IREAD
     end
 
-    fd = LibC._wopen(System.to_wstr(filename), oflag, perm)
-    if fd == -1
-      raise ::File::Error.from_errno("Error opening file with mode '#{mode}'", file: filename)
+    fd, errno = open(filename, open_flag(mode), ::File::Permissions.new(perm))
+    unless errno.none?
+      raise ::File::Error.from_os_error("Error opening file with mode '#{mode}'", errno, file: filename)
     end
 
     fd
   end
 
-  def self.mktemp(prefix : String?, suffix : String?, dir : String) : {LibC::Int, String}
-    path = "#{dir}#{::File::SEPARATOR}#{prefix}.#{::Random::Secure.hex}#{suffix}"
+  def self.open(filename : String, flags : Int32, perm : ::File::Permissions) : {LibC::Int, Errno}
+    access, disposition, attributes = self.posix_to_open_opts flags, perm
 
-    mode = LibC::O_RDWR | LibC::O_CREAT | LibC::O_EXCL | LibC::O_BINARY | LibC::O_NOINHERIT
-    fd = LibC._wopen(System.to_wstr(path), mode, ::File::DEFAULT_CREATE_PERMISSIONS)
-    if fd == -1
-      raise ::File::Error.from_errno("Error creating temporary file", file: path)
+    handle = LibC.CreateFileW(
+      System.to_wstr(filename),
+      access,
+      LibC::DEFAULT_SHARE_MODE, # UNIX semantics
+      nil,
+      disposition,
+      attributes,
+      LibC::HANDLE.null
+    )
+
+    if handle == LibC::INVALID_HANDLE_VALUE
+      # Map ERROR_FILE_EXISTS to Errno::EEXIST to avoid changing semantics of other systems
+      return {-1, WinError.value.error_file_exists? ? Errno::EEXIST : Errno.value}
     end
 
-    {fd, path}
+    fd = LibC._open_osfhandle handle, flags
+
+    if fd == -1
+      return {-1, Errno.value}
+    end
+
+    # Only binary mode is supported
+    LibC._setmode fd, LibC::O_BINARY
+
+    {fd, Errno::NONE}
+  end
+
+  private def self.posix_to_open_opts(flags : Int32, perm : ::File::Permissions)
+    access = if flags.bits_set? LibC::O_WRONLY
+               LibC::GENERIC_WRITE
+             elsif flags.bits_set? LibC::O_RDWR
+               LibC::GENERIC_READ | LibC::GENERIC_WRITE
+             else
+               LibC::GENERIC_READ
+             end
+
+    if flags.bits_set? LibC::O_APPEND
+      access |= LibC::FILE_APPEND_DATA
+    end
+
+    if flags.bits_set? LibC::O_TRUNC
+      if flags.bits_set? LibC::O_CREAT
+        disposition = LibC::CREATE_ALWAYS
+      else
+        disposition = LibC::TRUNCATE_EXISTING
+      end
+    elsif flags.bits_set? LibC::O_CREAT
+      if flags.bits_set? LibC::O_EXCL
+        disposition = LibC::CREATE_NEW
+      else
+        disposition = LibC::OPEN_ALWAYS
+      end
+    else
+      disposition = LibC::OPEN_EXISTING
+    end
+
+    attributes = LibC::FILE_ATTRIBUTE_NORMAL
+    unless perm.owner_write?
+      attributes |= LibC::FILE_ATTRIBUTE_READONLY
+    end
+
+    if flags.bits_set? LibC::O_TEMPORARY
+      attributes |= LibC::FILE_FLAG_DELETE_ON_CLOSE | LibC::FILE_ATTRIBUTE_TEMPORARY
+      access |= LibC::DELETE
+    end
+
+    if flags.bits_set? LibC::O_SHORT_LIVED
+      attributes |= LibC::FILE_ATTRIBUTE_TEMPORARY
+    end
+
+    if flags.bits_set? LibC::O_SEQUENTIAL
+      attributes |= LibC::FILE_FLAG_SEQUENTIAL_SCAN
+    elsif flags.bits_set? LibC::O_RANDOM
+      attributes |= LibC::FILE_FLAG_RANDOM_ACCESS
+    end
+
+    {access, disposition, attributes}
   end
 
   NOT_FOUND_ERRORS = {
@@ -124,7 +192,7 @@ module Crystal::System::File
   end
 
   def self.executable?(path) : Bool
-    raise NotImplementedError.new("File.executable?")
+    LibC.GetBinaryTypeW(System.to_wstr(path), out result) != 0
   end
 
   private def self.accessible?(path, mode)
@@ -206,8 +274,25 @@ module Crystal::System::File
   end
 
   def self.symlink(old_path : String, new_path : String) : Nil
-    # TODO: support directory symlinks (copy Go's stdlib logic here)
-    if LibC.CreateSymbolicLinkW(System.to_wstr(new_path), System.to_wstr(old_path), LibC::SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE) == 0
+    win_old_path = System.to_wstr(old_path)
+    win_new_path = System.to_wstr(new_path)
+    info = info?(old_path, true)
+    flags = info.try(&.type.directory?) ? LibC::SYMBOLIC_LINK_FLAG_DIRECTORY : 0
+
+    # Symlink on Windows required the SeCreateSymbolicLink privilege. But in the Windows 10
+    # Creators Update (1703), Microsoft added the SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+    # flag, that allows creation symlink without SeCreateSymbolicLink privilege if the computer
+    # is in Developer Mode.
+    result = LibC.CreateSymbolicLinkW(win_new_path, win_old_path, flags | LibC::SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)
+
+    # If we get an error like ERROR_INVALID_PARAMETER, it means that we have an
+    # older Windows. Retry without SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+    # flag.
+    if result == 0 && WinError.value == WinError::ERROR_INVALID_PARAMETER
+      result = LibC.CreateSymbolicLinkW(win_new_path, win_old_path, flags)
+    end
+
+    if result == 0
       raise ::File::Error.from_winerror("Error creating symlink", file: old_path, other: new_path)
     end
   end
@@ -258,15 +343,54 @@ module Crystal::System::File
   end
 
   private def system_flock_shared(blocking : Bool) : Nil
-    raise NotImplementedError.new("File#flock_shared")
+    flock(false, blocking)
   end
 
   private def system_flock_exclusive(blocking : Bool) : Nil
-    raise NotImplementedError.new("File#flock_exclusive")
+    flock(true, blocking)
   end
 
   private def system_flock_unlock : Nil
-    raise NotImplementedError.new("File#flock_unlock")
+    unlock_file(windows_handle)
+  end
+
+  private def flock(exclusive, retry)
+    flags = LibC::LOCKFILE_FAIL_IMMEDIATELY
+    flags |= LibC::LOCKFILE_EXCLUSIVE_LOCK if exclusive
+
+    handle = windows_handle
+    if retry
+      until lock_file(handle, flags)
+        sleep 0.1
+      end
+    else
+      lock_file(handle, flags) || raise IO::Error.from_winerror("Error applying file lock: file is already locked")
+    end
+  end
+
+  private def lock_file(handle, flags)
+    # lpOverlapped must be provided despite the synchronous use of this method.
+    overlapped = LibC::OVERLAPPED.new
+    # lock the entire file with offset 0 in overlapped and number of bytes set to max value
+    if 0 != LibC.LockFileEx(handle, flags, 0, 0xFFFF_FFFF, 0xFFFF_FFFF, pointerof(overlapped))
+      true
+    else
+      winerror = WinError.value
+      if winerror == WinError::ERROR_LOCK_VIOLATION
+        false
+      else
+        raise IO::Error.from_os_error("LockFileEx", winerror)
+      end
+    end
+  end
+
+  private def unlock_file(handle)
+    # lpOverlapped must be provided despite the synchronous use of this method.
+    overlapped = LibC::OVERLAPPED.new
+    # unlock the entire file with offset 0 in overlapped and number of bytes set to max value
+    if 0 == LibC.UnlockFileEx(handle, 0, 0xFFFF_FFFF, 0xFFFF_FFFF, pointerof(overlapped))
+      raise IO::Error.from_winerror("UnLockFileEx")
+    end
   end
 
   private def system_fsync(flush_metadata = true) : Nil
