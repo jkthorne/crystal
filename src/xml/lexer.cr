@@ -21,8 +21,8 @@ class XML::Lexer
     @token.line_number = @reader.line_number
     @token.column_number = @reader.column_number
 
-    @token.kind = Token::Kind::String
-    @token.raw_value = @reader.value
+    @token.name = @reader.name
+    @token.value = @reader.value
 
     @token
   end

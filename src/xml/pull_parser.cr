@@ -2,21 +2,11 @@ require "./libxml2"
 
 module XML
   class PullParser
-    enum Kind
-      Null
-      Bool
-      Int
-      Float
-      String
-      EOF
-    end
-
     delegate token, to: @lexer
     delegate location, to: @lexer
-    delegate readable, to: @lexer
-    delegate raw_value, to: token
-
-    getter string_value : String
+    delegate readable?, to: @lexer
+    delegate name, to: token
+    delegate value, to: token
 
     def initialize(input)
       @lexer = Lexer.new(input)
@@ -24,86 +14,50 @@ module XML
       @string_value = ""
 
       next_token
-      case token.kind
-      in .null?
-        @kind = Kind::Null
-      in .false?
-        @kind = Kind::Bool
-        @bool_value = false
-      in .true?
-        @kind = Kind::Bool
-        @bool_value = true
-      in .int?
-        @kind = Kind::Int
-      in .float?
-        @kind = Kind::Float
-      in .string?
-        @kind = Kind::String
-        @string_value = token.string_value
-      in .eof?
-        @kind = Kind::EOF
-      end
-    end
-
-    def int_value
-      token.int_value
-    end
-
-    def float_value
-      token.float_value
     end
 
     def read_null : Nil
-      expect_kind Kind::Null
       read_next
       nil
     end
 
     def read_int : Int64
-      expect_kind Kind::Int
-      int_value.tap { read_next }
+      value.to_i64
     end
 
     def read_bool : Bool
-      expect_kind Kind::Bool
-      @bool_value.tap { read_next }
-    end
-
-    def read_int : Int64
-      expect_kind Kind::Int
-      int_value.tap { read_next }
-    end
-
-    def read_float : Float64
-      case @kind
-      when .int?
-        int_value.to_f.tap { read_next }
-      when .float?
-        float_value.tap { read_next }
+      case value
+      when "t", "true"
+        true
+      when "f", "false"
+        false
       else
-        raise "expecting int or float but was #{@kind}"
+        raise "invalid bool"
       end
     end
 
+    def read_bool_or_null : Bool?
+      read_null_or { read_bool }
+    end
+
+    def read_float : Float64
+      value.to_f64
+    end
+
     def read_string : String
-      expect_kind Kind::String
-      @string_value.tap { read_next }
+      value
     end
 
     def read_raw : String
-      case @kind
-      when .null?
+      value
+    end
+
+    def read_null_or(&)
+      if @kind.null?
         read_next
-        "null"
-      when .bool?
-        @bool_value.to_s.tap { read_next }
-      when .int?, .float?
-        read_next
-        raw_value
-      when .string?
-        @string_value.tap { read_next }
+        nil
       else
-        unexpected_token
+        yield
       end
     end
 
@@ -116,6 +70,35 @@ module XML
     def read_next
       next_token
       @kind
+    end
+
+    {% for type in [Bool,
+                    Int8,
+                    Int16,
+                    Int32,
+                    Int64,
+                    UInt8,
+                    UInt16,
+                    UInt32,
+                    UInt64,
+                    Float32,
+                    Float64,
+                   ] %}
+      # Reads an {{type}} value and returns it.
+      #
+      # If the value is not an integer or does not fit in a {{type}} variable, it returns `nil`.
+      def read?(klass : {{type}}.class)
+        {{type}}.new(value)
+      rescue XML::ParseException | OverflowError
+        nil
+      end
+    {% end %}
+
+    # Reads a `String` value and returns it.
+    #
+    # If the value is not a `String`, returns `nil`.
+    def read?(klass : String.class) : String?
+      value
     end
 
     private def expect_kind(kind : Kind)

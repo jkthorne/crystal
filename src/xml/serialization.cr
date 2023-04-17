@@ -65,7 +65,7 @@ module XML
 
         el_name = parser.name
         while parser.readable?
-          %location = {parser.line_number, parser.column_number}
+          %location = parser.location
 
           case el_name
           {% for name, value in properties %}
@@ -87,7 +87,7 @@ module XML
             on_unknown_xml_attribute(parser, el_name)
           end
 
-          el_name = parser.read_name
+          el_name = parser.name
         end
 
         {% for name, value in properties %}

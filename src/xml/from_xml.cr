@@ -4,59 +4,59 @@ def Object.from_xml(string : String)
   new XML::PullParser.new string
 end
 
-def Array.from_xml(stirng : String) : Nil
-  parser = XML::PullParser.new string
-  new(parser) do |reader|
-    yield reader
-  end
-  nil
-end
+# def Array.from_xml(string : String) : Nil
+#   parser = XML::PullParser.new string
+#   new(parser) do |reader|
+#     yield reader
+#   end
+#   nil
+# end
 
 def Array.new(parser : XML::PullParser)
   parser.read_array
 end
 
-def Enum.new(reader : XML::Reader)
-  puts "TODO: EMUN"
-end
+# def Enum.new(reader : XML::Reader)
+#   puts "TODO: EMUN"
+# end
 
-module Iterator(T)
-  def self.from_xml(string_or_io)
-    puts "FROM XML"
-    iterator(T).new(XML::Reader.new(string_or_io))
-  end
+# module Iterator(T)
+#   def self.from_xml(string_or_io)
+#     puts "FROM XML"
+#     iterator(T).new(XML::Reader.new(string_or_io))
+#   end
 
-  def self.new(reader : XML::Reader)
-    puts "NEW"
-    FromXml(T).new(reader)
-  end
+#   def self.new(reader : XML::Reader)
+#     puts "NEW"
+#     FromXml(T).new(reader)
+#   end
 
-  private class FromXml(T)
-    include Iterator(T)
+#   private class FromXml(T)
+#     include Iterator(T)
 
-    def initialize(@reader : XML::Reader)
-      puts "INIT"
-      @reader.read
-      @end = false
-    end
+#     def initialize(@reader : XML::Reader)
+#       puts "INIT"
+#       @reader.read
+#       @end = false
+#     end
 
-    def next
-      puts "NEXT"
-      loop do
-        break if @end
+#     def next
+#       puts "NEXT"
+#       loop do
+#         break if @end
 
-        case @reader.node_type
-        when .end_element? # NOTE: go to end of element
-          @reader.read
-          @end = true
-        else
-          return T.new(@reader)
-        end
-        @reader.read
-      end
-    end
-  end
-end
+#         case @reader.node_type
+#         when .end_element? # NOTE: go to end of element
+#           @reader.read
+#           @end = true
+#         else
+#           return T.new(@reader)
+#         end
+#         @reader.read
+#       end
+#     end
+#   end
+# end
 
 def Bool.new(parser : XML::PullParser) : Bool
   parser.read_bool
@@ -176,33 +176,33 @@ def Int32.new(parser : XML::PullParser) : Int32
   parser.read_int.to_i32
 end
 
-def Array.new(reader : XML::Reader)
-  ary = new
-  new(reader) do |element|
-    ary << element
-  end
-  ary
-end
+# def Array.new(reader : XML::Reader)
+#   ary = new
+#   new(reader) do |element|
+#     ary << element
+#   end
+#   ary
+# end
 
-def Array.new(reader : XML::Reader)
-  results = Array(T).new
+# def Array.new(reader : XML::Reader)
+#   results = Array(T).new
 
-  loop do
-    case reader.node_type
-    when .element?
-      reader.read
-      results << T.new(reader)
-    when .end_element?
-      reader.read
-      break
-    when .none?
-      break
-    end
-    reader.read
-  end
+#   loop do
+#     case reader.node_type
+#     when .element?
+#       reader.read
+#       results << T.new(reader)
+#     when .end_element?
+#       reader.read
+#       break
+#     when .none?
+#       break
+#     end
+#     reader.read
+#   end
 
-  results
-end
+#   results
+# end
 
 def String.new(parser : XML::PullParser) : String
   parser.read_string
