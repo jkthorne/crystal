@@ -85,6 +85,43 @@ class File < IO::FileDescriptor
            "/dev/null"
          {% end %}
 
+  # Options used to control the behavior of `Dir.glob`.
+  @[Flags]
+  enum MatchOptions
+    # Includes files whose name begins with a period (`.`).
+    DotFiles
+
+    # Includes files which have a hidden attribute backed by the native
+    # filesystem.
+    #
+    # On Windows, this matches files that have the NTFS hidden attribute set.
+    # This option alone doesn't match files with _both_ the hidden and the
+    # system attributes, `OSHidden` must also be used.
+    #
+    # On other systems, this has no effect.
+    NativeHidden
+
+    # Includes files which are considered hidden by operating system
+    # conventions (apart from `DotFiles`), but not by the filesystem.
+    #
+    # On Windows, this option alone has no effect. However, combining it with
+    # `NativeHidden` matches files that have both the NTFS hidden and system
+    # attributes set. Note that files with just the system attribute, but not
+    # the hidden attribute, are always matched regardless of this option or
+    # `NativeHidden`.
+    #
+    # On other systems, this has no effect.
+    OSHidden
+
+    # Returns a suitable platform-specific default set of options for
+    # `Dir.glob` and `Dir.[]`.
+    #
+    # Currently this is always `NativeHidden | OSHidden`.
+    def self.glob_default
+      NativeHidden | OSHidden
+    end
+  end
+
   include Crystal::System::File
 
   # This constructor is provided for subclasses to be able to initialize an
@@ -168,7 +205,10 @@ class File < IO::FileDescriptor
     Crystal::System::File.info(path.to_s, follow_symlinks)
   end
 
-  # Returns `true` if *path* exists else returns `false`
+  # Returns whether the file given by *path* exists.
+  #
+  # Symbolic links are dereferenced, posibly recursively. Returns `false` if a
+  # symbolic link refers to a non-existent file.
   #
   # ```
   # File.delete("foo") if File.exists?("foo")
@@ -357,7 +397,10 @@ class File < IO::FileDescriptor
     Crystal::System::File.chmod(path.to_s, permissions)
   end
 
-  # Deletes the file at *path*. Deleting non-existent file will raise an exception.
+  # Deletes the file at *path*. Raises `File::Error` on failure.
+  #
+  # On Windows, this also deletes reparse points, including symbolic links,
+  # regardless of whether the reparse point is a directory.
   #
   # ```
   # File.write("foo", "")
@@ -368,8 +411,11 @@ class File < IO::FileDescriptor
     Crystal::System::File.delete(path.to_s, raise_on_missing: true)
   end
 
-  # Deletes the file at *path*.
-  # Returns `false` if the file does not exist.
+  # Deletes the file at *path*, or returns `false` if the file does not exist.
+  # Raises `File::Error` on other kinds of failure.
+  #
+  # On Windows, this also deletes reparse points, including symbolic links,
+  # regardless of whether the reparse point is a directory.
   #
   # ```
   # File.write("foo", "")
@@ -820,6 +866,12 @@ class File < IO::FileDescriptor
     end
   end
 
+  # Rename the current `File`
+  def rename(new_filename : Path | String) : Nil
+    File.rename(@path, new_filename)
+    @path = new_filename.to_s
+  end
+
   # Sets the access and modification times of *filename*.
   #
   # Use `#utime` if the `File` is already open.
@@ -897,12 +949,12 @@ class File < IO::FileDescriptor
   # file.info.permissions.value # => 0o700
   # ```
   def chmod(permissions : Int | Permissions) : Nil
-    Crystal::System::File.fchmod(@path, fd, permissions)
+    system_chmod(@path, permissions)
   end
 
   # Sets the access and modification times
   def utime(atime : Time, mtime : Time) : Nil
-    Crystal::System::File.futimens(@path, fd, atime, mtime)
+    system_utime(atime, mtime, @path)
   end
 
   # Attempts to set the access and modification times

@@ -1550,6 +1550,8 @@ class Crystal::Repl::Compiler < Crystal::Visitor
   end
 
   def visit(node : Not)
+    node.type = @context.program.no_return unless node.type?
+
     exp = node.exp
     exp.accept self
     return false unless @wants_value
@@ -1620,7 +1622,7 @@ class Crystal::Repl::Compiler < Crystal::Visitor
                      begin
                        create_compiled_def(call, target_def)
                      rescue ex : Crystal::TypeException
-                       node.raise ex, inner: ex
+                       node.raise ex.message, inner: ex
                      end
       call compiled_def, node: node
 
@@ -1871,7 +1873,7 @@ class Crystal::Repl::Compiler < Crystal::Visitor
                    begin
                      create_compiled_def(node, target_def)
                    rescue ex : Crystal::TypeException
-                     node.raise ex, inner: ex
+                     node.raise ex.message, inner: ex
                    end
 
     if (block = node.block) && !block.fun_literal
@@ -2008,7 +2010,8 @@ class Crystal::Repl::Compiler < Crystal::Visitor
     args = node.args
     obj_type = obj.try(&.type) || target_def.owner
 
-    if obj_type == @context.program
+    # TODO: should this use `Type#passed_as_self?` instead?
+    if obj_type == @context.program || obj_type.is_a?(FileModule)
       # Nothing
     elsif obj_type.passed_by_value?
       args_bytesize += sizeof(Pointer(UInt8))

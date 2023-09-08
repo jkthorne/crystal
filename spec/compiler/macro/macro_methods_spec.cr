@@ -1694,6 +1694,28 @@ module Crystal
         end
       end
 
+      describe "#id" do
+        it "does not include trailing + for virtual type" do
+          assert_macro("{{klass.id}}", "Foo") do |program|
+            foo = NonGenericClassType.new(program, program, "Foo", program.reference)
+            bar = NonGenericClassType.new(program, program, "Bar", foo)
+            {klass: TypeNode.new(foo.virtual_type)}
+          end
+        end
+      end
+
+      describe "#warning" do
+        it "emits a warning at a specific node" do
+          assert_warning <<-CRYSTAL, "Oh noes"
+            macro test(node)
+              {% node.warning "Oh noes" %}
+            end
+
+            test 10
+          CRYSTAL
+        end
+      end
+
       it "executes instance_vars" do
         assert_macro("{{x.instance_vars.map &.stringify}}", %(["bytesize", "length", "c"])) do |program|
           {x: TypeNode.new(program.string)}
@@ -3066,6 +3088,18 @@ module Crystal
       assert_macro %({{compare_versions("1.10.3", "1.2.3")}}), %(1)
     end
 
+    describe "#warning" do
+      it "emits a top level warning" do
+        assert_warning <<-CRYSTAL, "Oh noes"
+          macro test
+            {% warning "Oh noes" %}
+          end
+
+          test
+        CRYSTAL
+      end
+    end
+
     describe "#parse_type" do
       it "path" do
         assert_type(%[class Bar; end; {{ parse_type("Bar").is_a?(Path) ? 1 : 'a'}}]) { int32 }
@@ -3135,6 +3169,15 @@ module Crystal
             {foo: "bar".string}
           end
         end.should eq %(bar\n)
+      end
+
+      it "print" do
+        String.build do |io|
+          assert_macro(%({% print foo %}), "") do |program|
+            program.stdout = io
+            {foo: "bar".string}
+          end
+        end.should eq %(bar)
       end
 
       it "p" do

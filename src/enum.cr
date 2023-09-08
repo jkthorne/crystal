@@ -247,7 +247,7 @@ struct Enum
     value.to_i32
   end
 
-  {% for name in %w(i8 i16 i32 i64 u8 u16 u32 u64 f32 f64) %}
+  {% for name in %w(i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64) %}
     {% prefix = name.starts_with?('i') ? "Int".id : (name.starts_with?('u') ? "UInt".id : "Float".id) %}
     {% type = "#{prefix}#{name[1..-1].id}".id %}
     # Returns the value of this enum member as a `{{type}}`
@@ -337,20 +337,9 @@ struct Enum
   end
 
   # Returns `true` if this enum member's value includes *other*. This
-  # performs a logical "and" between this enum member's value and *other*'s,
-  # so instead of writing:
+  # performs a logical "and" between this enum member's value and *other*'s.
   #
-  # ```
-  # (member & value) != 0
-  # ```
-  #
-  # you can write:
-  #
-  # ```
-  # member.includes?(value)
-  # ```
-  #
-  # The above is mostly useful with flag enums.
+  # This is mostly useful for flag enums.
   #
   # For example:
   #
@@ -360,7 +349,7 @@ struct Enum
   # mode.includes?(IOMode::Async) # => false
   # ```
   def includes?(other : self) : Bool
-    (value & other.value) != 0
+    value.bits_set?(other.value)
   end
 
   # Returns `true` if this enum member and *other* have the same underlying value.
@@ -390,7 +379,7 @@ struct Enum
     {% if @type.annotation(Flags) %}
       return if value == 0
       {% for member in @type.constants %}
-        {% if member.stringify != "All" %}
+        {% if member.stringify != "All" && member.stringify != "None" %}
           if includes?(self.class.new({{@type.constant(member)}}))
             yield self.class.new({{@type.constant(member)}}), {{@type.constant(member)}}
           end
@@ -488,9 +477,10 @@ struct Enum
   # Returns the enum member that has the given name, or
   # raises `ArgumentError` if no such member exists. The comparison is made by using
   # `String#camelcase` and `String#downcase` between *string* and
-  # the enum members names, so a member named "FortyTwo" or "FORTY_TWO"
+  # the enum members names. Dashes (`-`) in *string* have the same meaning as an underscore (`_`).
+  # A member named "FortyTwo" or "FORTY_TWO"
   # is found with any of these strings: "forty_two", "FortyTwo", "FORTY_TWO",
-  # "FORTYTWO", "fortytwo".
+  # "Forty-Two", "FORTYTWO", "fortytwo".
   #
   # ```
   # Color.parse("Red")    # => Color::Red
@@ -504,9 +494,10 @@ struct Enum
   # Returns the enum member that has the given name, or
   # `nil` if no such member exists. The comparison is made by using
   # `String#camelcase` and `String#downcase` between *string* and
-  # the enum members names, so a member named "FortyTwo" or "FORTY_TWO"
+  # the enum members names. Dashes (`-`) in *string* have the same meaning as an underscore (`_`).
+  # A member named "FortyTwo", or "FORTY_TWO"
   # is found with any of these strings: "forty_two", "FortyTwo", "FORTY_TWO",
-  # "FORTYTWO", "fortytwo".
+  # "Forty-Two", "FORTYTWO", "fortytwo".
   #
   # ```
   # Color.parse?("Red")    # => Color::Red
@@ -517,7 +508,7 @@ struct Enum
   # If multiple members match the same normalized string, the first one is returned.
   def self.parse?(string : String) : self?
     {% begin %}
-      case string.camelcase.downcase
+      case string.gsub('-', '_').camelcase.downcase
       # Temporarily map all constants to their normalized value in order to
       # avoid duplicates in the `case` conditions.
       # `FOO` and `Foo` members would both generate `when "foo"` which creates a compile time error.

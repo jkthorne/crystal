@@ -22,8 +22,7 @@ module Spec
   # :nodoc:
   def self.add_location(file, line)
     locations = @@locations ||= {} of String => Array(Int32)
-    lines = locations[File.expand_path(file)] ||= [] of Int32
-    lines << line
+    locations.put_if_absent(File.expand_path(file)) { [] of Int32 } << line
   end
 
   # :nodoc:
@@ -50,7 +49,7 @@ module Spec
       when UInt64
         mode
       else
-        raise ArgumentError.new("order must be either 'default', 'random', or a numeric seed value")
+        raise ArgumentError.new("Order must be either 'default', 'random', or a numeric seed value")
       end
 
     @@randomizer_seed = seed

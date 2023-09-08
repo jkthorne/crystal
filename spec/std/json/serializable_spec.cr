@@ -212,6 +212,20 @@ class JSONAttrWithTimeEpoch
   property value : Time
 end
 
+class JSONAttrNilableWithTimeEpoch
+  include JSON::Serializable
+
+  @[JSON::Field(converter: Time::EpochConverter)]
+  property value : Time?
+end
+
+class JSONAttrDefaultWithTimeEpoch
+  include JSON::Serializable
+
+  @[JSON::Field(converter: Time::EpochConverter)]
+  property value : Time = Time.unix(0)
+end
+
 class JSONAttrWithTimeEpochMillis
   include JSON::Serializable
 
@@ -426,6 +440,23 @@ end
 class JSONVariableDiscriminatorEnum8 < JSONVariableDiscriminatorValueType
 end
 
+class JSONStrictDiscriminator
+  include JSON::Serializable
+  include JSON::Serializable::Strict
+
+  property type : String
+
+  use_json_discriminator "type", {foo: JSONStrictDiscriminatorFoo, bar: JSONStrictDiscriminatorBar}
+end
+
+class JSONStrictDiscriminatorFoo < JSONStrictDiscriminator
+end
+
+class JSONStrictDiscriminatorBar < JSONStrictDiscriminator
+  property x : JSONStrictDiscriminator
+  property y : JSONStrictDiscriminator
+end
+
 module JSONNamespace
   struct FooRequest
     include JSON::Serializable
@@ -445,6 +476,31 @@ module JSONNamespace
 
     def initialize # Allow for default value above
     end
+  end
+end
+
+class JSONSomething
+  include JSON::Serializable
+
+  property value : JSONSomething?
+end
+
+module JsonDiscriminatorBug
+  abstract class Base
+    include JSON::Serializable
+
+    use_json_discriminator("type", {"a" => A, "b" => B, "c" => C})
+  end
+
+  class A < Base
+  end
+
+  class B < Base
+    property source : Base
+    property value : Int32 = 1
+  end
+
+  class C < B
   end
 end
 
@@ -696,9 +752,10 @@ describe "JSON mapping" do
       json.a.should eq 11
       json.b.should eq "Haha"
 
-      json = JSONAttrWithDefaults.from_json(%({"a":null,"b":null}))
+      json = JSONAttrWithDefaults.from_json(%({"a":null,"b":null,"f":null}))
       json.a.should eq 11
       json.b.should eq "Haha"
+      json.f.should be_nil
     end
 
     it "bool" do
@@ -746,6 +803,16 @@ describe "JSON mapping" do
       json = JSONAttrWithDefaults.from_json(%({}))
       json.h.should eq [1, 2, 3]
     end
+  end
+
+  it "converter with null value (#13655)" do
+    JSONAttrNilableWithTimeEpoch.from_json(%({"value": null})).value.should be_nil
+    JSONAttrNilableWithTimeEpoch.from_json(%({"value":1459859781})).value.should eq Time.unix(1459859781)
+  end
+
+  it "converter with default value" do
+    JSONAttrDefaultWithTimeEpoch.from_json(%({"value": null})).value.should eq Time.unix(0)
+    JSONAttrDefaultWithTimeEpoch.from_json(%({"value":1459859781})).value.should eq Time.unix(1459859781)
   end
 
   it "uses Time::EpochConverter" do
@@ -1072,6 +1139,24 @@ describe "JSON mapping" do
       object_enum = JSONVariableDiscriminatorValueType.from_json(%({"type": 18}))
       object_enum.should be_a(JSONVariableDiscriminatorEnum8)
     end
+
+    it "deserializes with discriminator, strict recursive type" do
+      foo = JSONStrictDiscriminator.from_json(%({"type": "foo"}))
+      foo = foo.should be_a(JSONStrictDiscriminatorFoo)
+
+      bar = JSONStrictDiscriminator.from_json(%({"type": "bar", "x": {"type": "foo"}, "y": {"type": "foo"}}))
+      bar = bar.should be_a(JSONStrictDiscriminatorBar)
+      bar.x.should be_a(JSONStrictDiscriminatorFoo)
+      bar.y.should be_a(JSONStrictDiscriminatorFoo)
+    end
+
+    it "deserializes with discriminator, another recursive type, fixes: #13429" do
+      c = JsonDiscriminatorBug::Base.from_json %q({"type": "c", "source": {"type": "a"}, "value": 2})
+      c.as(JsonDiscriminatorBug::C).value.should eq 2
+
+      c = JsonDiscriminatorBug::Base.from_json %q({"type": "c", "source": {"type": "a"}})
+      c.as(JsonDiscriminatorBug::C).value.should eq 1
+    end
   end
 
   describe "namespaced classes" do
@@ -1080,5 +1165,9 @@ describe "JSON mapping" do
       request.foo.id.should eq "id:foo"
       request.bar.id.should eq "id:bar"
     end
+  end
+
+  it "fixes #13337" do
+    JSONSomething.from_json(%({"value":{}})).value.should_not be_nil
   end
 end

@@ -32,7 +32,7 @@ on: [push, pull_request]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 env:
   TRAVIS_OS_NAME: linux
@@ -61,7 +61,7 @@ jobs:
 
     steps:
       - name: Download Crystal source
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Build fresh compiler
         run: bin/ci with_build_env make
