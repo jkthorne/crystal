@@ -204,43 +204,6 @@ lib LibXML
 
   fun xmlOutputBufferCreateIO(iowrite : OutputWriteCallback, ioclose : OutputCloseCallback, ioctx : Void*, encoder : Void*) : OutputBuffer*
 
-  # struct XMLSAXHandler
-  #   internalSubset : Void*
-  #   isStandalone : Void*
-  #   hasInternalSubset : Void*
-  #   hasExternalSubset : Void*
-  #   resolveEntity : Void*
-  #   getEntity : Void*
-  #   entityDecl : Void*
-  #   notationDecl : Void*
-  #   attributeDecl : Void*
-  #   elementDecl : Void*
-  #   unparsedEntityDecl : Void*
-  #   setDocumentLocator : Void*
-  #   startDocument : Void*
-  #   endDocument : Void*
-  #   startElement : Void*
-  #   endElement : Void*
-  #   reference : Void*
-  #   characters : Void*
-  #   ignorableWhitespace : Void*
-  #   processingInstruction : Void*
-  #   comment : Void*
-  #   warning : Void*
-  #   error : Void*
-  #   fatalError : Void*
-  #   getParameterEntity : Void*
-  #   cdataBlock : Void*
-  #   externalSubset : Void*
-  #   initialized : UInt
-  #   _private : Void*
-  #   startElementNs : Void*
-  #   endElementNs : Void*
-  #   serror : Void*
-  # end
-
-  # fun xmlSAXUserParseMemory(sax : XMLSAXHandler*, user_data Void*, buffer : UInt8*, size : Int) : Int
-
   enum ErrorLevel
     NONE    = 0
     WARNING = 1
