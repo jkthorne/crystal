@@ -16,6 +16,7 @@ module Spec
     property? focus = false
     getter? dry_run = false
     getter? list_tags = false
+    getter? error_on_fail = false
     getter? color : Bool
 
     getter stdout : IO
@@ -72,6 +73,9 @@ module Spec
         end
         opts.on("--fail-fast", "abort the run on first failure") do
           @fail_fast = true
+        end
+        opts.on("--error-on-fail", "show error details immediately when a failure or error occurs") do
+          @error_on_fail = true
         end
         opts.on("--location file:line", "run example at line 'line' in file 'file', multiple allowed") do |location|
           if location =~ /\A(.+?)\:(\d+)\Z/

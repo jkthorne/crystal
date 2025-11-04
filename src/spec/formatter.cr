@@ -22,6 +22,36 @@ module Spec
     def should_print_summary?
       false
     end
+
+    protected def print_failure(result : Result)
+      return unless ex = result.exception
+
+      @io.puts
+      @io.puts @cli.colorize("#{result.kind.to_s.upcase}: #{result.description}", result.kind)
+
+      if ex.is_a?(SpecError)
+        source_line = Spec.read_line(ex.file, ex.line)
+        if source_line
+          @io.puts @cli.colorize("     Failure/Error: #{source_line.strip}", :error)
+        end
+      end
+      @io.puts
+
+      message = ex.is_a?(SpecError) ? ex.to_s : ex.inspect_with_backtrace
+      message.split('\n') do |line|
+        @io.print "       "
+        @io.puts @cli.colorize(line, :error)
+      end
+
+      if ex.is_a?(SpecError)
+        cwd = Dir.current
+        @io.puts
+        @io.puts @cli.colorize("     # #{Path[ex.file].relative_to(cwd)}:#{ex.line}", :comment)
+      end
+
+      @io.puts
+      @io.flush
+    end
   end
 
   # :nodoc:
@@ -41,6 +71,10 @@ module Spec
       @io << @cli.colorize(result.kind.letter, result.kind)
       split_lines
       @io.flush
+
+      if @cli.error_on_fail? && (result.kind.fail? || result.kind.error?)
+        print_failure(result)
+      end
     end
 
     private def split_lines
@@ -109,6 +143,10 @@ module Spec
       @io << '\r'
       print_indent
       @io.puts @cli.colorize(@last_description, result.kind)
+
+      if @cli.error_on_fail? && (result.kind.fail? || result.kind.error?)
+        print_failure(result)
+      end
     end
 
     def should_print_summary?
