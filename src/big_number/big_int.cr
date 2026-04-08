@@ -81,6 +81,21 @@ module BigNumber
       @size = -@size if neg
     end
 
+    # Creates a `BigInt` by copying another `BigInt`.
+    def initialize(other : BigInt)
+      n = other.abs_size
+      if n == 0
+        @limbs = Pointer(Limb).null
+        @alloc = 0
+        @size = 0
+      else
+        @limbs = Pointer(Limb).malloc(n)
+        @alloc = n
+        @limbs.copy_from(other.@limbs, n)
+        @size = other.@size
+      end
+    end
+
     # Creates a `BigInt` from an unsigned integer primitive.
     def initialize(value : UInt8 | UInt16 | UInt32 | UInt64 | UInt128)
       @limbs = Pointer(Limb).null
