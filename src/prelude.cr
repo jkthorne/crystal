@@ -68,6 +68,7 @@ require "reference"
 require "reference_storage"
 require "regex"
 require "set"
+require "simd_vector"
 {% unless flag?(:wasm32) %}
   require "signal"
 {% end %}

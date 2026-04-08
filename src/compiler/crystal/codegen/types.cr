@@ -22,7 +22,7 @@ module Crystal
     # In the codegen phase these types are passed as byval pointers.
     def passed_by_value?
       case self
-      when PrimitiveType, PointerInstanceType, ProcInstanceType
+      when PrimitiveType, PointerInstanceType, ProcInstanceType, SIMDVectorInstanceType
         false
       when TupleInstanceType, NamedTupleInstanceType, MixedUnionType
         true
