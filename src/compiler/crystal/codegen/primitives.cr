@@ -81,6 +81,16 @@ class Crystal::CodeGenVisitor
               cast_to_void_pointer void_ptr_throwinfo
             when "va_arg"
               codegen_va_arg call, node, target_def, call_args
+            when "simd_splat"
+              codegen_primitive_simd_splat node, target_def, call_args
+            when "simd_extract"
+              codegen_primitive_simd_extract node, target_def, call_args
+            when "simd_insert"
+              codegen_primitive_simd_insert node, target_def, call_args
+            when "simd_binary"
+              codegen_primitive_simd_binary node, target_def, call_args
+            when "simd_compare"
+              codegen_primitive_simd_compare node, target_def, call_args
             else
               raise "BUG: unhandled primitive in codegen: #{node.name}"
             end
@@ -1495,5 +1505,125 @@ class Crystal::CodeGenVisitor
         @builder.ptr2int(value, llvm_context.int64),
         @builder.ptr2int(image_base, llvm_context.int64)),
       llvm_context.int32)
+  end
+
+  # --- SIMD Vector Primitives ---
+
+  # Broadcast a scalar value to all lanes of a vector.
+  # Crystal: SIMDVector(T, N).splat(value : T) : SIMDVector(T, N)
+  # LLVM: insertelement + shufflevector with zeroinitializer mask
+  def codegen_primitive_simd_splat(node, target_def, call_args)
+    vec_type = node.type.as(SIMDVectorInstanceType)
+    n = vec_type.size.as(NumberLiteral).value.to_i
+    llvm_vec_type = llvm_type(vec_type)
+
+    scalar = call_args[1]
+
+    # Insert scalar at index 0 of an undef vector
+    undef_vec = llvm_vec_type.undef
+    vec = insert_element(undef_vec, scalar, int32(0))
+
+    # Shuffle with zeroinitializer mask to broadcast to all lanes
+    mask_type = llvm_context.int32.vector(n)
+    zero_mask = mask_type.null
+    shuffle_vector(vec, llvm_vec_type.undef, zero_mask)
+  end
+
+  # Extract a scalar element from a vector at the given index.
+  # Crystal: vec.unsafe_extract(index : Int32) : T
+  # LLVM: extractelement
+  def codegen_primitive_simd_extract(node, target_def, call_args)
+    extract_element(call_args[0], call_args[1])
+  end
+
+  # Insert a scalar element into a vector at the given index, returning a new vector.
+  # Crystal: vec.unsafe_insert(index : Int32, value : T) : SIMDVector(T, N)
+  # LLVM: insertelement
+  def codegen_primitive_simd_insert(node, target_def, call_args)
+    insert_element(call_args[0], call_args[2], call_args[1])
+  end
+
+  # Elementwise binary arithmetic on two vectors.
+  # Crystal: vec + other, vec - other, vec * other, vec / other, etc.
+  # LLVM: same builder ops as scalar (add/fadd/sub/fsub/mul/fmul/fdiv/etc.)
+  def codegen_primitive_simd_binary(node, target_def, call_args)
+    vec_type = context.type.as(SIMDVectorInstanceType)
+    element_type = vec_type.element_type
+    op = target_def.name
+    p1, p2 = call_args
+
+    if element_type.is_a?(FloatType)
+      case op
+      when "+" then builder.fadd(p1, p2)
+      when "-" then builder.fsub(p1, p2)
+      when "*" then builder.fmul(p1, p2)
+      when "/" then builder.fdiv(p1, p2)
+      else          raise "BUG: unsupported SIMD float binary op: #{op}"
+      end
+    elsif element_type.is_a?(IntegerType)
+      case op
+      when "+", "&+"  then builder.add(p1, p2)
+      when "-", "&-"  then builder.sub(p1, p2)
+      when "*", "&*"  then builder.mul(p1, p2)
+      when "/", "tdiv" then element_type.signed? ? builder.sdiv(p1, p2) : builder.udiv(p1, p2)
+      when "%"         then element_type.signed? ? builder.srem(p1, p2) : builder.urem(p1, p2)
+      when "&"         then and(p1, p2)
+      when "|"         then or(p1, p2)
+      when "^"         then builder.xor(p1, p2)
+      when "unsafe_shl"  then builder.shl(p1, p2)
+      when "unsafe_shr"  then element_type.signed? ? builder.ashr(p1, p2) : builder.lshr(p1, p2)
+      else                    raise "BUG: unsupported SIMD integer binary op: #{op}"
+      end
+    else
+      raise "BUG: unsupported SIMD element type for binary op: #{element_type}"
+    end
+  end
+
+  # Elementwise comparison of two vectors, returning a vector of Bool (i1).
+  # Crystal: vec.cmp_eq(other), vec.cmp_lt(other), etc.
+  # LLVM: icmp/fcmp on vector types → <N x i1>
+  def codegen_primitive_simd_compare(node, target_def, call_args)
+    vec_type = context.type.as(SIMDVectorInstanceType)
+    element_type = vec_type.element_type
+    op = target_def.name
+    p1, p2 = call_args
+
+    if element_type.is_a?(FloatType)
+      pred = case op
+             when "cmp_eq"  then LLVM::RealPredicate::OEQ
+             when "cmp_ne"  then LLVM::RealPredicate::UNE
+             when "cmp_lt"  then LLVM::RealPredicate::OLT
+             when "cmp_le"  then LLVM::RealPredicate::OLE
+             when "cmp_gt"  then LLVM::RealPredicate::OGT
+             when "cmp_ge"  then LLVM::RealPredicate::OGE
+             else                raise "BUG: unsupported SIMD float comparison: #{op}"
+             end
+      builder.fcmp(pred, p1, p2)
+    elsif element_type.is_a?(IntegerType)
+      pred = if element_type.signed?
+               case op
+               when "cmp_eq" then LLVM::IntPredicate::EQ
+               when "cmp_ne" then LLVM::IntPredicate::NE
+               when "cmp_lt" then LLVM::IntPredicate::SLT
+               when "cmp_le" then LLVM::IntPredicate::SLE
+               when "cmp_gt" then LLVM::IntPredicate::SGT
+               when "cmp_ge" then LLVM::IntPredicate::SGE
+               else               raise "BUG: unsupported SIMD integer comparison: #{op}"
+               end
+             else
+               case op
+               when "cmp_eq" then LLVM::IntPredicate::EQ
+               when "cmp_ne" then LLVM::IntPredicate::NE
+               when "cmp_lt" then LLVM::IntPredicate::ULT
+               when "cmp_le" then LLVM::IntPredicate::ULE
+               when "cmp_gt" then LLVM::IntPredicate::UGT
+               when "cmp_ge" then LLVM::IntPredicate::UGE
+               else               raise "BUG: unsupported SIMD integer comparison: #{op}"
+               end
+             end
+      builder.icmp(pred, p1, p2)
+    else
+      raise "BUG: unsupported SIMD element type for comparison: #{element_type}"
+    end
   end
 end

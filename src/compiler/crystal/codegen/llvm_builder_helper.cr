@@ -170,7 +170,8 @@ module Crystal
 
     delegate ptr2int, int2ptr, and, or, not, bit_cast,
       trunc, load, store, load_volatile, store_volatile, br, insert_block, position_at_end,
-      cond, phi, extract_value, switch, to: builder
+      cond, phi, extract_element, extract_value, insert_element, shuffle_vector, switch,
+      to: builder
 
     def ret
       builder.ret
