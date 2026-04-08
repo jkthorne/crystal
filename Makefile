@@ -37,10 +37,11 @@ check ?=          ## Enable only check when running format
 order ?=random    ## Enable order for spec execution (values: "default" | "random" | seed number)
 deref_symlinks ?= ## Dereference symbolic links for `make install`
 docs_sanitizer ?= ## Enable sanitization for documentation generation
-use_libiconv ?=   ## Use C libiconv instead of pure Crystal CharConv
-use_libz ?=       ## Use C libz instead of pure Crystal Z
-use_libyaml ?=    ## Use C libyaml instead of pure Crystal YAML
-use_libgmp ?=     ## Use C libgmp instead of pure Crystal BigNumber
+use_native_libs ?=## Use all C library backends instead of pure Crystal
+use_libiconv ?=$(use_native_libs)## Use C libiconv instead of pure Crystal CharConv
+use_libz ?=$(use_native_libs)## Use C libz instead of pure Crystal Z
+use_libyaml ?=$(use_native_libs)## Use C libyaml instead of pure Crystal YAML
+use_libgmp ?=$(use_native_libs)## Use C libgmp instead of pure Crystal BigNumber
 sequential_codegen ?=$(if $(filter 0,$(supports_preview_mt)),true,)## Enforce sequential codegen in compiler builds. Base compiler before Crystal 1.8 cannot build with `-Dpreview_mt -Dexecution_context`
 
 O := .build
