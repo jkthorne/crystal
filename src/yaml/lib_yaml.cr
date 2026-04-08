@@ -1,3 +1,7 @@
+{% unless flag?(:use_libyaml) %}
+  {% skip_file %}
+{% end %}
+
 require "./enums"
 
 # Supported library versions:

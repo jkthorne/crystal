@@ -8,31 +8,279 @@
 #
 # Invoking `read_next` reads the next event.
 class YAML::PullParser
-  protected getter content
+  {% if flag?(:use_libyaml) %}
 
-  def initialize(@content : String | IO)
-    @parser = Pointer(Void).malloc(LibYAML::PARSER_SIZE).as(LibYAML::Parser*)
-    @event = LibYAML::Event.new
-    @closed = false
+    protected getter content
 
-    LibYAML.yaml_parser_initialize(@parser)
+    def initialize(@content : String | IO)
+      @parser = Pointer(Void).malloc(LibYAML::PARSER_SIZE).as(LibYAML::Parser*)
+      @event = LibYAML::Event.new
+      @closed = false
 
-    if content.is_a?(String)
-      LibYAML.yaml_parser_set_input_string(@parser, content, content.bytesize)
-    else
-      LibYAML.yaml_parser_set_input(@parser, ->(data, buffer, size, size_read) {
-        parser = data.as(YAML::PullParser)
-        io = parser.content.as(IO)
-        slice = Slice.new(buffer, size)
-        actual_read_bytes = io.read(slice)
-        size_read.value = LibC::SizeT.new(actual_read_bytes)
-        LibC::Int.new(1)
-      }, self.as(Void*))
+      LibYAML.yaml_parser_initialize(@parser)
+
+      if content.is_a?(String)
+        LibYAML.yaml_parser_set_input_string(@parser, content, content.bytesize)
+      else
+        LibYAML.yaml_parser_set_input(@parser, ->(data, buffer, size, size_read) {
+          parser = data.as(YAML::PullParser)
+          io = parser.content.as(IO)
+          slice = Slice.new(buffer, size)
+          actual_read_bytes = io.read(slice)
+          size_read.value = LibC::SizeT.new(actual_read_bytes)
+          LibC::Int.new(1)
+        }, self.as(Void*))
+      end
+
+      read_next
+      raise "Expected STREAM_START" unless kind.stream_start?
     end
 
-    read_next
-    raise "Expected STREAM_START" unless kind.stream_start?
-  end
+    # The current event kind.
+    def kind : EventKind
+      @event.type
+    end
+
+    # Returns the tag associated to the current event, or `nil`
+    # if there's no tag.
+    def tag : String?
+      case kind
+      when .mapping_start?
+        ptr = @event.data.mapping_start.tag
+      when .sequence_start?
+        ptr = @event.data.sequence_start.tag
+      when .scalar?
+        ptr = @event.data.scalar.tag
+      else
+        # no tag
+      end
+      ptr ? String.new(ptr) : nil
+    end
+
+    # Returns the scalar value, assuming the pull parser
+    # is located at a scalar. Raises otherwise.
+    def value : String
+      expect_kind EventKind::SCALAR
+
+      ptr = @event.data.scalar.value
+      ptr ? String.new(ptr, @event.data.scalar.length) : ""
+    end
+
+    # Returns the anchor associated to the current event, or `nil`
+    # if there's no anchor.
+    def anchor : String?
+      case kind
+      when .scalar?
+        read_anchor @event.data.scalar.anchor
+      when .sequence_start?
+        read_anchor @event.data.sequence_start.anchor
+      when .mapping_start?
+        read_anchor @event.data.mapping_start.anchor
+      when .alias?
+        read_anchor @event.data.alias.anchor
+      else
+        nil
+      end
+    end
+
+    # Returns the sequence style, assuming the pull parser is located
+    # at a sequence begin event. Raises otherwise.
+    def sequence_style : SequenceStyle
+      expect_kind EventKind::SEQUENCE_START
+      @event.data.sequence_start.style
+    end
+
+    # Returns the mapping style, assuming the pull parser is located
+    # at a mapping begin event. Raises otherwise.
+    def mapping_style : MappingStyle
+      expect_kind EventKind::MAPPING_START
+      @event.data.mapping_start.style
+    end
+
+    # Returns the scalar style, assuming the pull parser is located
+    # at a scalar event. Raises otherwise.
+    def scalar_style : ScalarStyle
+      expect_kind EventKind::SCALAR
+      @event.data.scalar.style
+    end
+
+    # Reads the next event.
+    def read_next : EventKind
+      LibYAML.yaml_event_delete(pointerof(@event))
+      LibYAML.yaml_parser_parse(@parser, pointerof(@event))
+      if problem = problem?
+        msg = String.new(problem)
+        location = {problem_line_number, problem_column_number}
+        if context = context?
+          context_info = {String.new(context), context_line_number, context_column_number}
+        end
+        raise msg, *location, context_info
+      end
+      kind
+    end
+
+    # Note: YAML starts counting from 0, we want to count from 1
+
+    def start_line : Int32
+      @event.start_mark.line.to_i32 + 1
+    end
+
+    def start_column : Int32
+      @event.start_mark.column.to_i32 + 1
+    end
+
+    def end_line : Int32
+      @event.end_mark.line.to_i32 + 1
+    end
+
+    def end_column : Int32
+      @event.end_mark.column.to_i32 + 1
+    end
+
+    private def problem_line_number
+      (problem? ? problem_mark?.line : start_line) + 1
+    end
+
+    private def problem_column_number
+      (problem? ? problem_mark?.column : start_column) + 1
+    end
+
+    private def problem_mark?
+      @parser.value.problem_mark
+    end
+
+    private def problem?
+      @parser.value.problem
+    end
+
+    private def context?
+      @parser.value.context
+    end
+
+    private def context_mark?
+      @parser.value.context_mark
+    end
+
+    private def context_line_number
+      context_mark?.line + 1
+    end
+
+    private def context_column_number
+      context_mark?.column + 1
+    end
+
+    def finalize
+      return if @closed
+
+      LibYAML.yaml_parser_delete(@parser)
+      LibYAML.yaml_event_delete(pointerof(@event))
+    end
+
+    def close : Nil
+      finalize
+      @closed = true
+    end
+
+    private def read_anchor(anchor)
+      anchor ? String.new(anchor) : nil
+    end
+
+  {% else %}
+
+    @event_parser : EventParser
+    @event : Event
+    @closed : Bool
+
+    def initialize(content : String)
+      @event_parser = EventParser.new(content)
+      @event = Event.new(kind: EventKind::NONE)
+      @closed = false
+      read_next
+      raise "Expected STREAM_START" unless kind.stream_start?
+    end
+
+    def initialize(content : IO)
+      @event_parser = EventParser.new(content)
+      @event = Event.new(kind: EventKind::NONE)
+      @closed = false
+      read_next
+      raise "Expected STREAM_START" unless kind.stream_start?
+    end
+
+    # The current event kind.
+    def kind : EventKind
+      @event.kind
+    end
+
+    # Returns the tag associated to the current event, or `nil`
+    # if there's no tag.
+    def tag : String?
+      @event.tag
+    end
+
+    # Returns the scalar value, assuming the pull parser
+    # is located at a scalar. Raises otherwise.
+    def value : String
+      expect_kind EventKind::SCALAR
+      @event.value || ""
+    end
+
+    # Returns the anchor associated to the current event, or `nil`
+    # if there's no anchor.
+    def anchor : String?
+      @event.anchor
+    end
+
+    # Returns the sequence style, assuming the pull parser is located
+    # at a sequence begin event. Raises otherwise.
+    def sequence_style : SequenceStyle
+      expect_kind EventKind::SEQUENCE_START
+      @event.sequence_style
+    end
+
+    # Returns the mapping style, assuming the pull parser is located
+    # at a mapping begin event. Raises otherwise.
+    def mapping_style : MappingStyle
+      expect_kind EventKind::MAPPING_START
+      @event.mapping_style
+    end
+
+    # Returns the scalar style, assuming the pull parser is located
+    # at a scalar event. Raises otherwise.
+    def scalar_style : ScalarStyle
+      expect_kind EventKind::SCALAR
+      @event.style
+    end
+
+    # Reads the next event.
+    def read_next : EventKind
+      @event = @event_parser.parse
+      kind
+    end
+
+    def start_line : Int32
+      @event.start_mark.line + 1
+    end
+
+    def start_column : Int32
+      @event.start_mark.column + 1
+    end
+
+    def end_line : Int32
+      @event.end_mark.line + 1
+    end
+
+    def end_column : Int32
+      @event.end_mark.column + 1
+    end
+
+    def close : Nil
+      return if @closed
+      @closed = true
+      @event_parser.close
+    end
+
+  {% end %}
 
   # Creates a parser, yields it to the block, and closes
   # the parser at the end of it.
@@ -41,87 +289,8 @@ class YAML::PullParser
     yield parser ensure parser.close
   end
 
-  # The current event kind.
-  def kind : EventKind
-    @event.type
-  end
-
-  # Returns the tag associated to the current event, or `nil`
-  # if there's no tag.
-  def tag : String?
-    case kind
-    when .mapping_start?
-      ptr = @event.data.mapping_start.tag
-    when .sequence_start?
-      ptr = @event.data.sequence_start.tag
-    when .scalar?
-      ptr = @event.data.scalar.tag
-    else
-      # no tag
-    end
-    ptr ? String.new(ptr) : nil
-  end
-
-  # Returns the scalar value, assuming the pull parser
-  # is located at a scalar. Raises otherwise.
-  def value : String
-    expect_kind EventKind::SCALAR
-
-    ptr = @event.data.scalar.value
-    ptr ? String.new(ptr, @event.data.scalar.length) : ""
-  end
-
-  # Returns the anchor associated to the current event, or `nil`
-  # if there's no anchor.
-  def anchor : String?
-    case kind
-    when .scalar?
-      read_anchor @event.data.scalar.anchor
-    when .sequence_start?
-      read_anchor @event.data.sequence_start.anchor
-    when .mapping_start?
-      read_anchor @event.data.mapping_start.anchor
-    when .alias?
-      read_anchor @event.data.alias.anchor
-    else
-      nil
-    end
-  end
-
-  # Returns the sequence style, assuming the pull parser is located
-  # at a sequence begin event. Raises otherwise.
-  def sequence_style : SequenceStyle
-    expect_kind EventKind::SEQUENCE_START
-    @event.data.sequence_start.style
-  end
-
-  # Returns the mapping style, assuming the pull parser is located
-  # at a mapping begin event. Raises otherwise.
-  def mapping_style : MappingStyle
-    expect_kind EventKind::MAPPING_START
-    @event.data.mapping_start.style
-  end
-
-  # Returns the scalar style, assuming the pull parser is located
-  # at a scalar event. Raises otherwise.
-  def scalar_style : ScalarStyle
-    expect_kind EventKind::SCALAR
-    @event.data.scalar.style
-  end
-
-  # Reads the next event.
-  def read_next : EventKind
-    LibYAML.yaml_event_delete(pointerof(@event))
-    LibYAML.yaml_parser_parse(@parser, pointerof(@event))
-    if problem = problem?
-      msg = String.new(problem)
-      location = {problem_line_number, problem_column_number}
-      if context = context?
-        context_info = {String.new(context), context_line_number, context_column_number}
-      end
-      raise msg, *location, context_info
-    end
-    kind
+  def location : {Int32, Int32}
+    {start_line, start_column}
   end
 
   # Reads a "stream start" event, yields to the block,
@@ -258,81 +427,9 @@ class YAML::PullParser
     end
   end
 
-  # Note: YAML starts counting from 0, we want to count from 1
-
-  def location : {Int32, Int32}
-    {start_line, start_column}
-  end
-
-  def start_line : Int32
-    @event.start_mark.line.to_i32 + 1
-  end
-
-  def start_column : Int32
-    @event.start_mark.column.to_i32 + 1
-  end
-
-  def end_line : Int32
-    @event.end_mark.line.to_i32 + 1
-  end
-
-  def end_column : Int32
-    @event.end_mark.column.to_i32 + 1
-  end
-
-  private def problem_line_number
-    (problem? ? problem_mark?.line : start_line) + 1
-  end
-
-  private def problem_column_number
-    (problem? ? problem_mark?.column : start_column) + 1
-  end
-
-  private def problem_mark?
-    @parser.value.problem_mark
-  end
-
-  private def problem?
-    @parser.value.problem
-  end
-
-  private def context?
-    @parser.value.context
-  end
-
-  private def context_mark?
-    @parser.value.context_mark
-  end
-
-  private def context_line_number
-    # YAML starts counting from 0, we want to count from 1
-    context_mark?.line + 1
-  end
-
-  private def context_column_number
-    # YAML starts counting from 0, we want to count from 1
-    context_mark?.column + 1
-  end
-
-  def finalize
-    return if @closed
-
-    LibYAML.yaml_parser_delete(@parser)
-    LibYAML.yaml_event_delete(pointerof(@event))
-  end
-
-  def close : Nil
-    finalize
-    @closed = true
-  end
-
   # Raises if the current kind is not the expected one.
   def expect_kind(kind : EventKind) : Nil
     raise "Expected #{kind} but was #{self.kind}" unless kind == self.kind
-  end
-
-  private def read_anchor(anchor)
-    anchor ? String.new(anchor) : nil
   end
 
   def raise(msg : String, line_number = self.start_line, column_number = self.start_column, context_info = nil) : NoReturn

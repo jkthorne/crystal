@@ -37,4 +37,12 @@ module YAML
     BLOCK
     FLOW
   end
+
+  {% unless flag?(:use_libyaml) %}
+    enum Encoding
+      UTF8
+      UTF16LE
+      UTF16BE
+    end
+  {% end %}
 end
