@@ -211,7 +211,7 @@ struct BigInt < Int
 
   # Returns `{quotient, remainder}` using floored division.
   def divmod(number : Int) : {BigInt, BigInt}
-    q, r = @inner.divmod(number)
+    q, r = @inner.divmod(BigNumber::BigInt.new(number))
     {BigInt.new(q), BigInt.new(r)}
   end
 
@@ -222,7 +222,7 @@ struct BigInt < Int
 
   # Returns the truncated division (rounds towards zero).
   def tdiv(other : Int) : BigInt
-    BigInt.new(@inner.tdiv(other))
+    BigInt.new(@inner.tdiv(BigNumber::BigInt.new(other)))
   end
 
   # Returns the truncated remainder (sign matches dividend).
@@ -232,7 +232,7 @@ struct BigInt < Int
 
   # Returns the truncated remainder (sign matches dividend).
   def remainder(other : Int) : BigInt
-    BigInt.new(@inner.remainder(other))
+    BigInt.new(@inner.remainder(BigNumber::BigInt.new(other)))
   end
 
   # --- Unsafe division variants ---
@@ -244,7 +244,7 @@ struct BigInt < Int
 
   # Floored division without zero check.
   def unsafe_floored_div(other : Int) : BigInt
-    BigInt.new(@inner.unsafe_floored_div(other))
+    BigInt.new(@inner.unsafe_floored_div(BigNumber::BigInt.new(other)))
   end
 
   # Floored modulo without zero check.
@@ -254,7 +254,7 @@ struct BigInt < Int
 
   # Floored modulo without zero check.
   def unsafe_floored_mod(other : Int) : BigInt
-    BigInt.new(@inner.unsafe_floored_mod(other))
+    BigInt.new(@inner.unsafe_floored_mod(BigNumber::BigInt.new(other)))
   end
 
   # Truncated division without zero check.
@@ -264,7 +264,7 @@ struct BigInt < Int
 
   # Truncated division without zero check.
   def unsafe_truncated_div(other : Int) : BigInt
-    BigInt.new(@inner.unsafe_truncated_div(other))
+    BigInt.new(@inner.unsafe_truncated_div(BigNumber::BigInt.new(other)))
   end
 
   # Truncated modulo without zero check.
@@ -274,7 +274,7 @@ struct BigInt < Int
 
   # Truncated modulo without zero check.
   def unsafe_truncated_mod(other : Int) : BigInt
-    BigInt.new(@inner.unsafe_truncated_mod(other))
+    BigInt.new(@inner.unsafe_truncated_mod(BigNumber::BigInt.new(other)))
   end
 
   # Returns `{quotient, remainder}` using floored division, without zero check.
@@ -285,7 +285,7 @@ struct BigInt < Int
 
   # Returns `{quotient, remainder}` using floored division, without zero check.
   def unsafe_floored_divmod(number : Int) : {BigInt, BigInt}
-    q, r = @inner.unsafe_floored_divmod(number)
+    q, r = @inner.unsafe_floored_divmod(BigNumber::BigInt.new(number))
     {BigInt.new(q), BigInt.new(r)}
   end
 
@@ -297,7 +297,7 @@ struct BigInt < Int
 
   # Returns `{quotient, remainder}` using truncated division, without zero check.
   def unsafe_truncated_divmod(number : Int) : {BigInt, BigInt}
-    q, r = @inner.unsafe_truncated_divmod(number)
+    q, r = @inner.unsafe_truncated_divmod(BigNumber::BigInt.new(number))
     {BigInt.new(q), BigInt.new(r)}
   end
 
@@ -528,11 +528,25 @@ struct BigInt < Int
   end
 end
 
-# Arbitrary-precision floating point, drop-in replacement for Crystal's stdlib `BigFloat`.
-#
-# Wraps `BigNumber::BigFloat` and inherits from `Float`. Configurable precision
-# (default 128 bits). All operations are delegated to the pure-Crystal implementation.
-#
-# ```
-# f = BigFloat.new("3.14159265358979323846")
-# f * 2 # => 6.28318530717958647692
+# Allow BigNumber::BigInt to accept the wrapper BigInt
+module BigNumber
+  struct BigInt
+    def initialize(wrapper : ::BigInt)
+      initialize(wrapper.inner)
+    end
+  end
+end
+
+# BigInt / BigInt → BigFloat (matches GMP stdlib behavior)
+struct BigInt
+  def /(other : BigInt) : BigFloat
+    BigFloat.new(self) / BigFloat.new(other)
+  end
+end
+
+# Provide LibGMP type aliases for spec compatibility
+module LibGMP
+  alias UI = UInt64
+  alias SI = Int64
+  alias Double = Float64
+end

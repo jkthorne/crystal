@@ -302,7 +302,7 @@ module BigNumber
       if exponent == 0
         return BigRational.new(1)
       elsif exponent < 0
-        inv ** (-exponent)
+        inv ** (0 - exponent)
       elsif exponent == 1
         clone
       else

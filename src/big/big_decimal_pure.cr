@@ -116,6 +116,11 @@ struct BigDecimal < Number
     BigDecimal.new(@inner + other)
   end
 
+  # Returns the sum.
+  def +(other : Number) : BigDecimal
+    self + BigDecimal.new(other)
+  end
+
   # Returns the difference.
   def -(other : BigDecimal) : BigDecimal
     BigDecimal.new(@inner - other.inner)
@@ -131,6 +136,11 @@ struct BigDecimal < Number
     BigDecimal.new(@inner - other)
   end
 
+  # Returns the difference.
+  def -(other : Number) : BigDecimal
+    self - BigDecimal.new(other)
+  end
+
   # Returns the product.
   def *(other : BigDecimal) : BigDecimal
     BigDecimal.new(@inner * other.inner)
@@ -144,6 +154,11 @@ struct BigDecimal < Number
   # Returns the product.
   def *(other : Int) : BigDecimal
     BigDecimal.new(@inner * other)
+  end
+
+  # Returns the product.
+  def *(other : Number) : BigDecimal
+    self * BigDecimal.new(other)
   end
 
   # Returns the remainder.
@@ -169,6 +184,11 @@ struct BigDecimal < Number
   # Returns the quotient.
   def /(other : Int) : BigDecimal
     BigDecimal.new(@inner / other)
+  end
+
+  # Returns the quotient.
+  def /(other : Number) : BigDecimal
+    self / BigDecimal.new(other)
   end
 
   # Divides with explicit decimal digit *precision*.
@@ -267,6 +287,16 @@ struct BigDecimal < Number
     @inner.inspect(io)
   end
 
+  # Returns the *quotient* as absolutely negative if `self` and *other* have
+  # different signs, otherwise returns the *quotient*.
+  def normalize_quotient(other : BigDecimal, quotient : BigInt) : BigInt
+    if (value < 0 && other.value > 0) || (other.value < 0 && value > 0)
+      -quotient.abs
+    else
+      quotient
+    end
+  end
+
   # --- Misc ---
 
   # Returns `self` (value type, no copy needed).
@@ -278,5 +308,34 @@ struct BigDecimal < Number
   def hash(hasher)
     hasher = @inner.hash(hasher)
     hasher
+  end
+end
+
+struct Int
+  include Comparable(BigDecimal)
+
+  def <=>(other : BigDecimal)
+    to_big_d <=> other
+  end
+
+  def +(other : BigDecimal) : BigDecimal
+    other + self
+  end
+
+  def -(other : BigDecimal) : BigDecimal
+    to_big_d - other
+  end
+
+  def *(other : BigDecimal) : BigDecimal
+    other * self
+  end
+end
+
+struct Float
+  include Comparable(BigDecimal)
+
+  def <=>(other : BigDecimal)
+    cmp = other <=> self
+    -cmp if cmp
   end
 end

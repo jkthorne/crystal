@@ -347,11 +347,11 @@ module BigNumber
 
     # Compares `self` with a `BigRational`.
     def <=>(other : BigRational) : Int32
-      if @scale == 0
-        @value <=> other
-      else
-        @value * other.denominator <=> power_ten_to(@scale) * other.numerator
-      end
+      # Convert to cross-multiplication: self.value / 10^scale vs other.num / other.den
+      # => self.value * other.den vs other.num * 10^scale
+      lhs = @value * other.denominator
+      rhs = other.numerator * power_ten_to(@scale)
+      lhs <=> rhs
     end
 
     # Compares `self` with a primitive `Float`. Returns `nil` if *other* is NaN.

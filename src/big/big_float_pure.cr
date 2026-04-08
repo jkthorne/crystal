@@ -71,13 +71,13 @@ struct BigFloat < Float
   end
 
   # Creates a `BigFloat` from a primitive `Float` with the given *precision* in bits.
-  def initialize(num : Float::Primitive, *, precision : Int32)
-    @inner = BigNumber::BigFloat.new(num, precision: precision)
+  def initialize(num : Float::Primitive, precision : Int)
+    @inner = BigNumber::BigFloat.new(num, precision: precision.to_i32)
   end
 
   # Creates a `BigFloat` from a string with the given *precision* in bits.
-  def initialize(str : String, *, precision : Int32)
-    @inner = BigNumber::BigFloat.new(str, precision: precision)
+  def initialize(str : String, precision : Int)
+    @inner = BigNumber::BigFloat.new(str, precision: precision.to_i32)
   end
 
   # Returns the current default precision in bits.
@@ -344,6 +344,17 @@ struct BigFloat < Float
     @inner.inspect(io)
   end
 
+  # :nodoc:
+  # Compatibility with GMP BigFloat's to_s_impl.
+  protected def to_s_impl(*, point_range : Range, int_trailing_zeros : Bool) : String
+    String.build { |io| to_s_impl(io, point_range: point_range, int_trailing_zeros: int_trailing_zeros) }
+  end
+
+  # :nodoc:
+  protected def to_s_impl(io : IO, *, point_range : Range, int_trailing_zeros : Bool) : Nil
+    io << to_s
+  end
+
   # --- Misc ---
 
   # Returns `self` (value type, no copy needed).
@@ -361,13 +372,30 @@ struct BigFloat < Float
   def fdiv(other : Number::Primitive) : self
     self.class.new(self / other)
   end
-end
 
-# Exact rational arithmetic, drop-in replacement for Crystal's stdlib `BigRational`.
-#
-# Wraps `BigNumber::BigRational` and inherits from `Number`. Automatically
-# canonicalized (reduced to lowest terms) via binary GCD.
-#
-# ```
-# r = BigRational.new(1, 3) + BigRational.new(1, 6)
-# r # => 1/2
+  # Override `Number#format` to avoid `Float::Printer.shortest` which only
+  # accepts `Float::Primitive`. Uses string conversion instead.
+  def format(io : IO, separator = '.', delimiter = ',', decimal_places : Int? = nil, *, group : Int = 3, only_significant : Bool = false) : Nil
+    number = self
+    if decimal_places
+      number = number.round(decimal_places)
+    end
+
+    if decimal_places && decimal_places >= 0
+      string = number.abs.to_s
+      # Ensure decimal point exists
+      unless string.includes?('.')
+        string = "#{string}.#{"0" * decimal_places}"
+      end
+      integer, _, decimals = string.partition('.')
+    else
+      string = number.abs.to_s
+      _, _, decimals = string.partition(".")
+      integer = number.trunc.to_big_i.abs.to_s
+    end
+
+    is_negative = number < 0
+
+    format_impl(io, is_negative, integer, decimals, separator, delimiter, decimal_places, group, only_significant)
+  end
+end
