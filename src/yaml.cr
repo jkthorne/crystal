@@ -1,3 +1,11 @@
+{% unless flag?(:use_libyaml) %}
+  require "./yaml/mark"
+  require "./yaml/token"
+  require "./yaml/event"
+  require "./yaml/scanner"
+  require "./yaml/event_parser"
+  require "./yaml/emitter"
+{% end %}
 require "./yaml/*"
 require "./yaml/schema/*"
 require "./yaml/schema/core/*"
@@ -163,8 +171,12 @@ module YAML
 
   # Returns the used version of `libyaml`.
   def self.libyaml_version : SemanticVersion
-    LibYAML.yaml_get_version(out major, out minor, out patch)
-
-    SemanticVersion.new(major, minor, patch)
+    {% if flag?(:use_libyaml) %}
+      LibYAML.yaml_get_version(out major, out minor, out patch)
+      SemanticVersion.new(major, minor, patch)
+    {% else %}
+      # Pure Crystal YAML implementation, no libyaml
+      SemanticVersion.new(0, 0, 0)
+    {% end %}
   end
 end
