@@ -1,4 +1,4 @@
-{% unless flag?(:without_iconv) %}
+{% unless flag?(:without_iconv) && (flag?(:use_libiconv) || flag?(:use_libc_iconv)) %}
   require "crystal/iconv"
 {% end %}
 
@@ -20,7 +20,7 @@ class IO
   end
 end
 
-{% if flag?(:without_iconv) %}
+{% if flag?(:without_iconv) && (flag?(:use_libiconv) || flag?(:use_libc_iconv)) %}
   require "./encoding_stubs"
   {% skip_file %}
 {% end %}
