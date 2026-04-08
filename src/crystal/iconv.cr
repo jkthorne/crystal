@@ -109,10 +109,11 @@
     @converter : CharConv::Converter
 
     def initialize(from : String, to : String, invalid : Symbol? = nil)
-      original_from, original_to = from, to
-
       @skip_invalid = invalid == :skip
+      @converter = Crystal::Iconv.create_converter(from, to, @skip_invalid)
+    end
 
+    protected def self.create_converter(from : String, to : String, skip_invalid : Bool) : CharConv::Converter
       # Strip //IGNORE and //TRANSLIT flags from the from encoding —
       # charconv applies flags from the `to` encoding only.
       clean_from = from
@@ -122,27 +123,25 @@
 
       to_enc = to
       {% unless flag?(:freebsd) || flag?(:musl) || flag?(:dragonfly) || flag?(:netbsd) || flag?(:solaris) %}
-        if @skip_invalid && !to_enc.includes?("//IGNORE")
+        if skip_invalid && !to_enc.includes?("//IGNORE")
           to_enc = "#{to_enc}//IGNORE"
         end
       {% end %}
 
-      begin
-        @converter = CharConv::Converter.new(clean_from, to_enc)
-      rescue ex : ArgumentError
-        original_from_clean = clean_from
-        original_to_clean = to
-        if idx = original_to_clean.index("//")
-          original_to_clean = original_to_clean[0, idx]
-        end
+      CharConv::Converter.new(clean_from, to_enc)
+    rescue ex : ArgumentError
+      original_from = clean_from
+      original_to = to
+      if idx = original_to.index("//")
+        original_to = original_to[0, idx]
+      end
 
-        if original_from_clean == "UTF-8"
-          raise ArgumentError.new("Invalid encoding: #{original_to_clean}")
-        elsif original_to_clean == "UTF-8"
-          raise ArgumentError.new("Invalid encoding: #{original_from_clean}")
-        else
-          raise ArgumentError.new("Invalid encoding: #{original_from_clean} -> #{original_to_clean}")
-        end
+      if original_from == "UTF-8"
+        raise ArgumentError.new("Invalid encoding: #{original_to}")
+      elsif original_to == "UTF-8"
+        raise ArgumentError.new("Invalid encoding: #{original_from}")
+      else
+        raise ArgumentError.new("Invalid encoding: #{original_from} -> #{original_to}")
       end
     end
 
