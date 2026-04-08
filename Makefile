@@ -37,13 +37,17 @@ check ?=          ## Enable only check when running format
 order ?=random    ## Enable order for spec execution (values: "default" | "random" | seed number)
 deref_symlinks ?= ## Dereference symbolic links for `make install`
 docs_sanitizer ?= ## Enable sanitization for documentation generation
+use_libiconv ?=   ## Use C libiconv instead of pure Crystal CharConv
+use_libz ?=       ## Use C libz instead of pure Crystal Z
+use_libyaml ?=    ## Use C libyaml instead of pure Crystal YAML
+use_libgmp ?=     ## Use C libgmp instead of pure Crystal BigNumber
 sequential_codegen ?=$(if $(filter 0,$(supports_preview_mt)),true,)## Enforce sequential codegen in compiler builds. Base compiler before Crystal 1.8 cannot build with `-Dpreview_mt -Dexecution_context`
 
 O := .build
 SOURCES := $(shell find src -name '*.cr')
 SPEC_SOURCES := $(shell find spec -name '*.cr')
 MAN1PAGES := $(patsubst doc/man/%.adoc,man/%.1,$(wildcard doc/man/*.adoc))
-override FLAGS += -D strict_multi_assign -D preview_overload_order $(if $(release),--release )$(if $(stats),--stats )$(if $(progress),--progress )$(if $(threads),--threads $(threads) )$(if $(debug),-d )$(if $(static),--static )$(if $(LDFLAGS),--link-flags="$(LDFLAGS)" )$(if $(target),--cross-compile --target $(target) )
+override FLAGS += -D strict_multi_assign -D preview_overload_order $(if $(release),--release )$(if $(stats),--stats )$(if $(progress),--progress )$(if $(threads),--threads $(threads) )$(if $(debug),-d )$(if $(static),--static )$(if $(LDFLAGS),--link-flags="$(LDFLAGS)" )$(if $(target),--cross-compile --target $(target) )$(if $(use_libiconv),-Duse_libiconv )$(if $(use_libz),-Duse_libz )$(if $(use_libyaml),-Duse_libyaml )$(if $(use_libgmp),-Duse_libgmp )
 # NOTE: USE_PCRE1 is only used for testing compatibility with legacy environments that don't provide libpcre2.
 # Newly built compilers should never be distributed with libpcre to ensure syntax consistency.
 override COMPILER_FLAGS += $(if $(interpreter),,-Dwithout_interpreter )$(if $(docs_sanitizer),,-Dwithout_libxml2 ) -Dwithout_openssl -Dwithout_zlib$(if $(sequential_codegen),, -Dpreview_mt -Dexecution_context) $(if $(USE_PCRE1),-Duse_pcre,-Duse_pcre2)
