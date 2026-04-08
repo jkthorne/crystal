@@ -1,4 +1,9 @@
-require "lib_z"
+{% if flag?(:use_libz) %}
+  require "lib_z"
+{% else %}
+  require "z"
+{% end %}
+
 require "./*"
 
 # The Deflate module contains readers and writers of DEFLATE format compressed
@@ -23,16 +28,22 @@ module Compress::Deflate
   end
 
   class Error < Exception
-    def initialize(ret, stream)
-      msg = stream.msg
-      msg = LibZ.zError(ret) if msg.null?
+    {% if flag?(:use_libz) %}
+      def initialize(ret, stream)
+        msg = stream.msg
+        msg = LibZ.zError(ret) if msg.null?
 
-      if msg
-        error_msg = String.new(msg)
-        super("deflate: #{error_msg}")
-      else
-        super("deflate: #{ret}")
+        if msg
+          error_msg = String.new(msg)
+          super("deflate: #{error_msg}")
+        else
+          super("deflate: #{ret}")
+        end
       end
+    {% end %}
+
+    def initialize(message : String)
+      super(message)
     end
   end
 end
