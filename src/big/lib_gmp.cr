@@ -1,3 +1,7 @@
+{% unless flag?(:use_libgmp) %}
+  {% skip_file %}
+{% end %}
+
 # Supported library versions:
 #
 # * libgmp
