@@ -241,6 +241,13 @@ module Crystal
       di_builder.create_array_type(type.size.as(NumberLiteral).value.to_i, llvm_typer.pointer_size, debug_type, [subrange])
     end
 
+    def create_debug_type(type : SIMDVectorInstanceType, original_type : Type)
+      debug_type = get_debug_type(type.element_type)
+      return unless debug_type
+      subrange = di_builder.get_or_create_array_subrange(0, type.size.as(NumberLiteral).value.to_i)
+      di_builder.create_array_type(type.size.as(NumberLiteral).value.to_i, llvm_typer.pointer_size, debug_type, [subrange])
+    end
+
     def create_debug_type(type : TypeDefType, original_type : Type)
       get_debug_type(type.typedef, original_type)
     end

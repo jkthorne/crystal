@@ -2323,6 +2323,49 @@ module Crystal
     end
   end
 
+  # The non-instantiated SIMDVector(T, N) type.
+  class SIMDVectorType < GenericClassType
+    def new_generic_instance(program, generic_type, type_vars)
+      n = type_vars["N"]
+
+      unless n.is_a?(Var) && n.type.is_a?(TypeParameter)
+        unless n.is_a?(NumberLiteral)
+          raise TypeException.new "can't instantiate SIMDVector(T, N) with N = #{n.type} (N must be an integer)"
+        end
+
+        value = n.value.to_i?
+        unless value
+          raise TypeException.new "can't instantiate SIMDVector(T, N) with N = #{n} (N must be an integer)"
+        end
+
+        if value <= 0
+          raise TypeException.new "can't instantiate SIMDVector(T, N) with N = #{value} (N must be positive)"
+        end
+
+        unless value & (value - 1) == 0
+          raise TypeException.new "can't instantiate SIMDVector(T, N) with N = #{value} (N must be a power of 2)"
+        end
+      end
+
+      SIMDVectorInstanceType.new program, generic_type, program.struct, type_vars
+    end
+  end
+
+  # An instantiated SIMD vector type, like SIMDVector(Float32, 4)
+  class SIMDVectorInstanceType < GenericClassInstanceType
+    def var
+      type_vars["T"]
+    end
+
+    def size
+      type_vars["N"]
+    end
+
+    def element_type
+      var.type
+    end
+  end
+
   # The non-instantiated Proc(*T, R) type.
   class ProcType < GenericClassType
     @splat_index = 0

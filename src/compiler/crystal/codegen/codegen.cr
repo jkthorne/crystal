@@ -201,7 +201,7 @@ module Crystal
     end
 
     def offset_of(type, element_index)
-      return 0_u64 if type.extern_union? || type.is_a?(StaticArrayInstanceType)
+      return 0_u64 if type.extern_union? || type.is_a?(StaticArrayInstanceType) || type.is_a?(SIMDVectorInstanceType)
       llvm_typer.offset_of(llvm_typer.llvm_type(type), element_index)
     end
 

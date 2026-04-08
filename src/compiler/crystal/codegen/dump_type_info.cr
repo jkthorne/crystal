@@ -85,7 +85,7 @@ module Crystal
     end
 
     private def ivar_offset_and_size(type, llvm_type, ivar_name, ivar_type) : {UInt64, UInt64}
-      if type.extern_union? || type.is_a?(StaticArrayInstanceType)
+      if type.extern_union? || type.is_a?(StaticArrayInstanceType) || type.is_a?(SIMDVectorInstanceType)
         return 0_u64, @llvm_typer.size_of(llvm_type)
       end
 

@@ -648,7 +648,7 @@ module Crystal
         false
       when ProcInstanceType, PointerInstanceType
         true
-      when StaticArrayInstanceType
+      when StaticArrayInstanceType, SIMDVectorInstanceType
         stable_abi?(type.element_type)
       when TupleInstanceType
         type.tuple_types.all? { |t| stable_abi?(t) }

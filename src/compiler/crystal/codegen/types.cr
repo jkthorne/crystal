@@ -63,7 +63,7 @@ module Crystal
       when ProcInstanceType
         # A proc can have closure data which might have pointers
         true
-      when StaticArrayInstanceType
+      when StaticArrayInstanceType, SIMDVectorInstanceType
         self.element_type.has_inner_pointers?
       when TupleInstanceType
         self.tuple_types.any? &.has_inner_pointers?

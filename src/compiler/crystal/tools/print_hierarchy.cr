@@ -177,7 +177,7 @@ module Crystal
         false
       when MixedUnionType
         type.union_types.all? { |t| constant_ivar_size?(t) }
-      when StaticArrayInstanceType
+      when StaticArrayInstanceType, SIMDVectorInstanceType
         return false unless constant_ivar_size?(type.element_type)
         case size_var = type.size
         when NumberLiteral

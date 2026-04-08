@@ -180,6 +180,12 @@ module Crystal
       pointed_type.array type.size.as(NumberLiteral).value.to_i
     end
 
+    private def create_llvm_type(type : SIMDVectorInstanceType, wants_size)
+      pointed_type = llvm_embedded_type(type.element_type, wants_size)
+      pointed_type = @llvm_context.int8 if pointed_type.void?
+      pointed_type.vector type.size.as(NumberLiteral).value.to_i
+    end
+
     private def create_llvm_type(type : TupleInstanceType, wants_size)
       llvm_name = llvm_name(type, wants_size)
 
@@ -269,6 +275,10 @@ module Crystal
     end
 
     private def create_llvm_struct_type(type : StaticArrayInstanceType, wants_size)
+      llvm_type(type, wants_size)
+    end
+
+    private def create_llvm_struct_type(type : SIMDVectorInstanceType, wants_size)
       llvm_type(type, wants_size)
     end
 
@@ -443,6 +453,10 @@ module Crystal
     # StaticArray can only be "returned" in lib externs,
     # not in C functions, and there it must not be a pointer.
     def llvm_c_return_type(type : StaticArrayInstanceType)
+      llvm_struct_type(type)
+    end
+
+    def llvm_c_return_type(type : SIMDVectorInstanceType)
       llvm_struct_type(type)
     end
 

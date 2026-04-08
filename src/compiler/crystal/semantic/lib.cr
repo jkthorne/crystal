@@ -285,7 +285,7 @@ class Crystal::Type
       self.proc_type.allowed_in_lib?
     when ProcInstanceType
       self.arg_types.all?(&.allowed_in_lib?) && (self.return_type.allowed_in_lib? || self.return_type.nil_type?)
-    when StaticArrayInstanceType
+    when StaticArrayInstanceType, SIMDVectorInstanceType
       self.element_type.allowed_in_lib?
     else
       self.extern?
