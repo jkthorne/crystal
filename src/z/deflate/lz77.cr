@@ -174,14 +174,24 @@ module Z
         p2 = @window.to_unsafe + s2
         len = 0
 
+        # Compare 16 bytes at a time using SIMD
+        while len + 16 <= max_len
+          v1 = SIMDVector(UInt8, 16).unsafe_load(p1 + len)
+          v2 = SIMDVector(UInt8, 16).unsafe_load(p2 + len)
+          ne_bits = v1.cmp_ne(v2).bitmask
+          if ne_bits != 0
+            len += ne_bits.trailing_zeros_count
+            return {len, max_len}.min
+          end
+          len += 16
+        end
+
         # Compare 8 bytes at a time
         while len + 8 <= max_len
-          v1 = (p1 + len).as(Pointer(UInt64)).value
-          v2 = (p2 + len).as(Pointer(UInt64)).value
-          xor = v1 ^ v2
+          xor = (p1 + len).as(Pointer(UInt64)).value ^ (p2 + len).as(Pointer(UInt64)).value
           if xor != 0
             len += xor.trailing_zeros_count // 8
-            return len > max_len ? max_len : len
+            return {len, max_len}.min
           end
           len += 8
         end
@@ -210,17 +220,34 @@ module Z
         # Shift window: move second half to first half
         @window[0, WINDOW_SIZE].copy_from(@window[WINDOW_SIZE, WINDOW_SIZE])
 
-        # Update hash entries
-        HASH_SIZE.times do |i|
-          v = @head[i].to_i32
-          @head[i] = v >= WINDOW_SIZE ? (v - WINDOW_SIZE).to_u16 : 0_u16
-        end
-        WINDOW_SIZE.times do |i|
-          v = @prev[i].to_i32
-          @prev[i] = v >= WINDOW_SIZE ? (v - WINDOW_SIZE).to_u16 : 0_u16
-        end
+        # Update hash entries using SIMD: subtract WINDOW_SIZE, clamp to 0
+        slide_hash_table(@head, HASH_SIZE)
+        slide_hash_table(@prev, WINDOW_SIZE)
 
         @pos -= WINDOW_SIZE
+      end
+
+      # Vectorized hash table slide: for each entry, v >= WINDOW_SIZE ? v - WINDOW_SIZE : 0
+      private def slide_hash_table(table : Array(UInt16), size : Int32) : Nil
+        ws = SIMDVector(UInt16, 8).splat(WINDOW_SIZE.to_u16)
+        zero = SIMDVector(UInt16, 8).zero
+        ptr = table.to_unsafe
+
+        i = 0
+        while i + 8 <= size
+          v = SIMDVector(UInt16, 8).unsafe_load(ptr + i)
+          mask = v.cmp_ge(ws)
+          result = SIMDVector(UInt16, 8).select(mask, v - ws, zero)
+          result.unsafe_store(ptr + i)
+          i += 8
+        end
+
+        # Scalar tail
+        while i < size
+          v = ptr[i].to_i32
+          ptr[i] = v >= WINDOW_SIZE ? (v - WINDOW_SIZE).to_u16 : 0_u16
+          i += 1
+        end
       end
     end
   end
