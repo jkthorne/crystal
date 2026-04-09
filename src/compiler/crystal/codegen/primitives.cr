@@ -91,6 +91,18 @@ class Crystal::CodeGenVisitor
               codegen_primitive_simd_binary node, target_def, call_args
             when "simd_compare"
               codegen_primitive_simd_compare node, target_def, call_args
+            when "simd_load"
+              codegen_primitive_simd_load node, target_def, call_args
+            when "simd_store"
+              codegen_primitive_simd_store node, target_def, call_args
+            when "simd_select"
+              codegen_primitive_simd_select node, target_def, call_args
+            when "simd_reduce_add"
+              codegen_primitive_simd_reduce_add node, target_def, call_args
+            when "simd_widen"
+              codegen_primitive_simd_widen node, target_def, call_args
+            when "simd_bitmask"
+              codegen_primitive_simd_bitmask node, target_def, call_args
             else
               raise "BUG: unhandled primitive in codegen: #{node.name}"
             end
@@ -1625,5 +1637,98 @@ class Crystal::CodeGenVisitor
     else
       raise "BUG: unsupported SIMD element type for comparison: #{element_type}"
     end
+  end
+
+  # Load a vector from a raw pointer (unaligned).
+  # Crystal: SIMDVector(T, N).unsafe_load(ptr : Pointer(T)) : self
+  # LLVM: load <N x T>, ptr with alignment 1
+  def codegen_primitive_simd_load(node, target_def, call_args)
+    vec_type = node.type.as(SIMDVectorInstanceType)
+    llvm_vec_type = llvm_type(vec_type)
+    ptr = call_args[1]
+    result = builder.load(llvm_vec_type, ptr, "simd_load")
+    result.alignment = 1
+    result
+  end
+
+  # Store a vector to a raw pointer (unaligned).
+  # Crystal: vec.unsafe_store(ptr : Pointer(T)) : Nil
+  # LLVM: store <N x T> vec, ptr with alignment 1
+  def codegen_primitive_simd_store(node, target_def, call_args)
+    vec = call_args[0]
+    ptr = call_args[1]
+    store_inst = builder.store(vec, ptr)
+    store_inst.alignment = 1
+    llvm_nil
+  end
+
+  # Conditional lane selection.
+  # Crystal: SIMDVector(T, N).select(mask, if_true, if_false) : self
+  # LLVM: select <N x i1> mask, <N x T> if_true, <N x T> if_false
+  def codegen_primitive_simd_select(node, target_def, call_args)
+    mask = call_args[1]
+    if_true = call_args[2]
+    if_false = call_args[3]
+    builder.select(mask, if_true, if_false, "simd_select")
+  end
+
+  # Horizontal sum reduction.
+  # Crystal: vec.reduce_add : T
+  # LLVM: call @llvm.vector.reduce.add.vNiB (integers)
+  #       call @llvm.vector.reduce.fadd.vNfB (floats, with start=0.0)
+  def codegen_primitive_simd_reduce_add(node, target_def, call_args)
+    vec_type = context.type.as(SIMDVectorInstanceType)
+    element_type = vec_type.element_type
+    n = vec_type.size.as(NumberLiteral).value.to_i
+    llvm_vec_type = llvm_type(vec_type)
+    llvm_elem_type = llvm_embedded_type(element_type)
+
+    if element_type.is_a?(IntegerType)
+      bits = element_type.bytes * 8
+      fun_name = "llvm.vector.reduce.add.v#{n}i#{bits}"
+      llvm_fun = fetch_typed_fun(@llvm_mod, fun_name) do
+        LLVM::Type.function([llvm_vec_type], llvm_elem_type)
+      end
+      call(llvm_fun, [call_args[0]])
+    elsif element_type.is_a?(FloatType)
+      bits = element_type.bytes * 8
+      suffix = bits == 32 ? "f32" : "f64"
+      fun_name = "llvm.vector.reduce.fadd.v#{n}#{suffix}"
+      llvm_fun = fetch_typed_fun(@llvm_mod, fun_name) do
+        LLVM::Type.function([llvm_elem_type, llvm_vec_type], llvm_elem_type)
+      end
+      # fadd reduction needs a start value (0.0)
+      start = bits == 32 ? llvm_elem_type.const_float(0.0_f32) : llvm_elem_type.const_double(0.0)
+      call(llvm_fun, [start, call_args[0]])
+    else
+      raise "BUG: unsupported SIMD element type for reduce_add: #{element_type}"
+    end
+  end
+
+  # Widen vector lanes (zero-extend or sign-extend).
+  # Crystal: vec.widen(U) : SIMDVector(U, N)
+  # LLVM: zext/sext <N x T> to <N x U>
+  def codegen_primitive_simd_widen(node, target_def, call_args)
+    result_type = node.type.as(SIMDVectorInstanceType)
+    source_type = context.type.as(SIMDVectorInstanceType)
+    llvm_result = llvm_type(result_type)
+
+    source_elem = source_type.element_type
+    if source_elem.is_a?(IntegerType) && source_elem.signed?
+      builder.sext(call_args[0], llvm_result, "simd_widen")
+    else
+      builder.zext(call_args[0], llvm_result, "simd_widen")
+    end
+  end
+
+  # Extract a bitmask from a Bool vector.
+  # Crystal: bool_vec.bitmask : UInt64
+  # LLVM: bitcast <N x i1> to iN, then zext to i64
+  def codegen_primitive_simd_bitmask(node, target_def, call_args)
+    vec_type = context.type.as(SIMDVectorInstanceType)
+    n = vec_type.size.as(NumberLiteral).value.to_i
+    int_n_type = @llvm_context.int(n)
+    result = builder.bit_cast(call_args[0], int_n_type, "simd_bitmask")
+    builder.zext(result, @llvm_context.int64, "simd_bitmask_ext")
   end
 end

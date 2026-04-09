@@ -234,6 +234,127 @@ struct SIMDVector(T, N)
   def cmp_ge(other : self) : SIMDVector(Bool, N)
   end
 
+  # --- Bitwise Shifts (integer vectors only) ---
+
+  # Returns a new vector where each lane is shifted left by the corresponding
+  # lane in *other*.
+  #
+  # WARNING: The shift amount per lane must be less than the bit width of `T`.
+  # Shifting by >= bit width is undefined behavior.
+  @[Primitive(:simd_binary)]
+  def unsafe_shl(other : self) : self
+  end
+
+  # Returns a new vector where each lane is shifted right by the corresponding
+  # lane in *other*. For unsigned types this is a logical shift; for signed
+  # types this is an arithmetic shift.
+  #
+  # WARNING: The shift amount per lane must be less than the bit width of `T`.
+  # Shifting by >= bit width is undefined behavior.
+  @[Primitive(:simd_binary)]
+  def unsafe_shr(other : self) : self
+  end
+
+  # Returns a new vector with each lane shifted left by *amount*.
+  def unsafe_shl(amount : T) : self
+    unsafe_shl(SIMDVector(T, N).splat(amount))
+  end
+
+  # Returns a new vector with each lane shifted right by *amount*.
+  def unsafe_shr(amount : T) : self
+    unsafe_shr(SIMDVector(T, N).splat(amount))
+  end
+
+  # --- Memory Operations ---
+
+  # Loads a vector from a raw pointer. The pointer does not need to be aligned
+  # to the vector size.
+  #
+  # WARNING: The caller must ensure that at least `N * sizeof(T)` bytes are
+  # readable starting from *ptr*.
+  #
+  # ```
+  # arr = StaticArray[1_i32, 2_i32, 3_i32, 4_i32]
+  # vec = SIMDVector(Int32, 4).unsafe_load(arr.to_unsafe)
+  # vec[0] # => 1
+  # ```
+  @[Primitive(:simd_load)]
+  def self.unsafe_load(ptr : Pointer(T)) : self
+  end
+
+  # Stores this vector to a raw pointer. The pointer does not need to be aligned
+  # to the vector size.
+  #
+  # WARNING: The caller must ensure that at least `N * sizeof(T)` bytes are
+  # writable starting from *ptr*.
+  #
+  # ```
+  # vec = SIMDVector[1_i32, 2_i32, 3_i32, 4_i32]
+  # arr = StaticArray(Int32, 4).new(0)
+  # vec.unsafe_store(arr.to_unsafe)
+  # arr[2] # => 3
+  # ```
+  @[Primitive(:simd_store)]
+  def unsafe_store(ptr : Pointer(T)) : Nil
+  end
+
+  # --- Lane Selection ---
+
+  # Returns a new vector where each lane is chosen from *if_true* or *if_false*
+  # based on the corresponding lane in *mask*.
+  #
+  # ```
+  # a = SIMDVector[1, 2, 3, 4]
+  # b = SIMDVector[5, 6, 7, 8]
+  # mask = a.cmp_lt(b)
+  # result = SIMDVector(Int32, 4).select(mask, a, b)
+  # # mask is all true, so result == a
+  # ```
+  @[Primitive(:simd_select)]
+  def self.select(mask : SIMDVector(Bool, N), if_true : self, if_false : self) : self
+  end
+
+  # --- Reductions ---
+
+  # Returns the sum of all lanes.
+  #
+  # ```
+  # vec = SIMDVector[1, 2, 3, 4]
+  # vec.reduce_add # => 10
+  # ```
+  @[Primitive(:simd_reduce_add)]
+  def reduce_add : T
+  end
+
+  # --- Widening ---
+
+  # Widens each lane to a larger integer type. For unsigned types, zero-extends;
+  # for signed types, sign-extends.
+  #
+  # ```
+  # narrow = SIMDVector[1_u8, 2_u8, 3_u8, 4_u8]
+  # wide = narrow.widen(UInt16)
+  # wide[0] # => 1_u16
+  # ```
+  @[Primitive(:simd_widen)]
+  def widen(type : U.class) : SIMDVector(U, N) forall U
+  end
+
+  # --- Bitmask Extraction (Bool vectors only) ---
+
+  # Converts a boolean vector to a scalar bitmask. Lane 0 maps to bit 0,
+  # lane 1 maps to bit 1, and so on. Only meaningful on `SIMDVector(Bool, N)`.
+  #
+  # ```
+  # a = SIMDVector[1, 2, 3, 4]
+  # b = SIMDVector[1, 0, 3, 0]
+  # mask = a.cmp_eq(b)  # => [true, false, true, false]
+  # mask.bitmask        # => 0b0101 == 5
+  # ```
+  @[Primitive(:simd_bitmask)]
+  def bitmask : UInt64
+  end
+
   # --- Conversion ---
 
   # Copies the vector lanes into a `StaticArray`.
